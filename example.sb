@@ -1,0 +1,5 @@
+(sddl# = 4 + 6 * (5 - (1))):hello$ = "world":(sddl)
+
+Function wow(a = "asd", b% = 1, c$ = !sddl + 3 * 5)
+	woshiyizeidie = "dlls"
+end function
