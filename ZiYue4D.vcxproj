@@ -139,11 +139,13 @@
     <ClInclude Include="AST.h" />
     <ClInclude Include="exceptions.h" />
     <ClInclude Include="Lex.h" />
+    <ClInclude Include="SemanticAnalyzer.h" />
     <ClInclude Include="Token.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AST.cpp" />
     <ClCompile Include="Lex.cpp" />
+    <ClCompile Include="SemanticAnalyzer.cpp" />
     <ClCompile Include="test.cpp" />
   </ItemGroup>
   <ItemGroup>

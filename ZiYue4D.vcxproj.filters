@@ -24,10 +24,10 @@
     <ClInclude Include="AST.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="SymbolTypes.h">
+    <ClInclude Include="exceptions.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="exceptions.h">
+    <ClInclude Include="SemanticAnalyzer.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -39,6 +39,9 @@
       <Filter>资源文件</Filter>
     </ClCompile>
     <ClCompile Include="AST.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SemanticAnalyzer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

@@ -7,6 +7,8 @@ using SymbolTable = std::unordered_multimap<std::string, SymbolType>;
 class ExprAST {
 public:
     virtual ~ExprAST() {}
+
+    friend class SemanticAnalyzer;
 };
 
 struct FunctionArgument {
@@ -26,6 +28,8 @@ public:
 private:
     std::string name;
     std::vector<std::unique_ptr<ExprAST>> arguments;
+
+    friend class SemanticAnalyzer;
 };
 
 class VariableExprAST : public ExprAST {
@@ -34,6 +38,8 @@ public:
 
 private:
     std::string name;
+
+    friend class SemanticAnalyzer;
 };
 
 class IntegerExprAST : public ExprAST {
@@ -73,6 +79,8 @@ public:
 private:
     int op;
     std::unique_ptr<ExprAST> expr;
+
+    friend class SemanticAnalyzer;
 };
 
 class BinaryExprAST : public ExprAST {
@@ -85,6 +93,8 @@ private:
     int op;
     std::unique_ptr<ExprAST> lhs;
     std::unique_ptr<ExprAST> rhs;
+
+    friend class SemanticAnalyzer;
 };
 
 class FunctionSignatureAST : public ExprAST {
@@ -97,6 +107,8 @@ public:
     SymbolType return_value_type;
     std::vector<std::unique_ptr<FunctionArgument>> arguments;
     SymbolTable symbol_table;
+
+    friend class SemanticAnalyzer;
 };
 
 class FunctionAST : public ExprAST {
@@ -104,11 +116,32 @@ public:
     FunctionAST(std::unique_ptr<FunctionSignatureAST> signature) : signature(std::move(signature)) {
     }
 
+    std::string to_string() {
+        std::string result = signature->name + '(';
+        for (auto& arg : signature->arguments) {
+            result += arg->name;
+            switch (arg->type)
+            {
+            case SYMBOL_TYPE_INT:result += '%'; break;
+            case SYMBOL_TYPE_FLOAT:result += '#'; break;
+            case SYMBOL_TYPE_STRING:result += '$'; break;
+            default: break;
+            }
+            result += ',';
+        }
+        if (signature->arguments.size() > 0) result.pop_back();
+        result.push_back(')');
+        return result;
+    }
+
     std::unique_ptr<FunctionSignatureAST> signature;
     std::vector<std::unique_ptr<ExprAST>> body;
+
+    friend class SemanticAnalyzer;
 };
 
 using FunctionTable = std::unordered_multimap<std::string, std::unique_ptr<FunctionAST>>;
+using ExternFunctionTable = std::unordered_map<std::string, std::unique_ptr<FunctionSignatureAST>>;
 
 class AST {
 public:
@@ -128,5 +161,8 @@ private:
     std::unique_ptr<Lex> lex;
     SymbolTable global_symbols;
     FunctionTable function_table;
+    ExternFunctionTable extern_function_table;
     int token = 0;
+
+    friend class SemanticAnalyzer;
 };

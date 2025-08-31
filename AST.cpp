@@ -19,7 +19,8 @@ void AST::parse()
             continue;
         }
         if (token == TOKEN_EXTERN) {
-            parse_function_signature();
+            auto function = parse_function_signature();
+            extern_function_table.emplace(function->name, std::move(function));
             continue;
         }
         std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(global_symbols));
@@ -67,7 +68,9 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
                 break;
             }
             if (token == '(' || function_first) { // must be function call
-                return parse_call_expression(std::move(identifier), symbol_table);
+                lhs = parse_call_expression(std::move(identifier), symbol_table);
+                token = lex->get_token();
+                return lhs;
             }
         }
         
@@ -148,6 +151,7 @@ void AST::parse_function_definition() {
     do {
         if (token == TOKEN_EOF) throw ast_exception("expecting end function");
         if (token == TOKEN_FUNCTION) throw ast_exception("cannot define function in function");
+        if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in function");
         if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_FUNCTION) { break; }
         if (token == TOKEN_END_OF_STMT) { this->token = lex->get_token(); continue; }
         std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(function->signature->symbol_table));

@@ -1,10 +1,11 @@
-(sddl# = 4 + 6 * (5 - (1))):hello$ = "world":(sddl%)
+(sddl# = 4 + 6 * (5 - (1)))
+hello$ = -"world"
 
-Function wow(a = "asd", b% = 1, c$ = 0 + 3 * 5)
-	woshiyizeidie = "dlls"
+
+Function wow#(a# = 10)
+	wow(2)
 end function
 
-wow()
-wow 2, 5, wow()
+extern sin(angle)
 
-extern sin(angle#)
+sin(a)
