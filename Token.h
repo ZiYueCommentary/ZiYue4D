@@ -8,6 +8,7 @@ enum Token {
     TOKEN_END_OF_STMT,
     TOKEN_IDENTIFIER,
     TOKEN_FUNCTION,
+    TOKEN_EXTERN,
     TOKEN_INTEGER,
     TOKEN_FLOAT,
     TOKEN_STRING,
@@ -18,8 +19,17 @@ enum Token {
     TOKEN_TYPE_STRING
 };
 
+enum SymbolType {
+    SYMBOL_TYPE_INT,
+    SYMBOL_TYPE_FLOAT,
+    SYMBOL_TYPE_STRING,
+    SYMBOL_TYPE_FUNCTION,
+    SYMBOL_TYPE_STRUCT
+};
+
 const std::unordered_map<std::string, Token> tokens = {
     {"function", TOKEN_FUNCTION},
     {"not", TOKEN_LOGIC_NOT},
-    {"end", TOKEN_END}
+    {"end", TOKEN_END},
+    {"extern", TOKEN_EXTERN}
 };

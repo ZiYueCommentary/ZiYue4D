@@ -1,10 +1,8 @@
 #pragma once
 
 #include "Lex.h"
-#include "SymbolTypes.h"
-#include <iostream>
 
-using SymbolTable = std::unordered_multimap<std::string, SymbolTypes>;
+using SymbolTable = std::unordered_multimap<std::string, SymbolType>;
 
 class ExprAST {
 public:
@@ -14,11 +12,20 @@ public:
 struct FunctionArgument {
 public:
     const std::string name;
-    const Token type;
+    const SymbolType type;
     const std::unique_ptr<ExprAST> default_value;
 
-    FunctionArgument(std::string&& name, Token type, std::unique_ptr<ExprAST> default_value) : name(std::move(name)), type(type), default_value(std::move(default_value)) {}
+    FunctionArgument(std::string&& name, SymbolType type, std::unique_ptr<ExprAST> default_value) : name(std::move(name)), type(type), default_value(std::move(default_value)) {}
     ~FunctionArgument() {}
+};
+
+class CallExprAST : public ExprAST {
+public:
+    CallExprAST(std::string&& name, std::vector<std::unique_ptr<ExprAST>>&& arguments) : name(std::move(name)), arguments(std::move(arguments)) {}
+
+private:
+    std::string name;
+    std::vector<std::unique_ptr<ExprAST>> arguments;
 };
 
 class VariableExprAST : public ExprAST {
@@ -80,32 +87,41 @@ private:
     std::unique_ptr<ExprAST> rhs;
 };
 
-class FunctionAST : public ExprAST {
+class FunctionSignatureAST : public ExprAST {
 public:
-    FunctionAST(std::string name, Token return_value_type) : name(name), return_value_type(return_value_type) {
+    FunctionSignatureAST(std::string name, SymbolType return_value_type) : name(name), return_value_type(return_value_type) {
         this->symbol_table = {};
     }
 
     std::string name;
-    Token return_value_type;
+    SymbolType return_value_type;
     std::vector<std::unique_ptr<FunctionArgument>> arguments;
-    std::vector<std::unique_ptr<ExprAST>> body;
     SymbolTable symbol_table;
 };
 
-using FunctionSignature = std::tuple<Token, int>; // retval & args
-using FunctionTable = std::unordered_multimap<std::string, std::tuple<FunctionSignature, std::unique_ptr<FunctionAST>>>;
+class FunctionAST : public ExprAST {
+public:
+    FunctionAST(std::unique_ptr<FunctionSignatureAST> signature) : signature(std::move(signature)) {
+    }
+
+    std::unique_ptr<FunctionSignatureAST> signature;
+    std::vector<std::unique_ptr<ExprAST>> body;
+};
+
+using FunctionTable = std::unordered_multimap<std::string, std::unique_ptr<FunctionAST>>;
 
 class AST {
 public:
     AST(std::unique_ptr<Lex> lex) : lex(std::move(lex)) {}
 
-    std::vector<std::unique_ptr<ExprAST>> parse();
+    void parse();
 
 private:
     std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table);
-    std::unique_ptr<ExprAST> parse_primary_expression(SymbolTable& symbol_table);
+    std::unique_ptr<ExprAST> parse_primary_expression(SymbolTable& symbol_table, bool function_first = true);
     void parse_function_definition();
+    std::unique_ptr<FunctionSignatureAST> parse_function_signature();
+    std::unique_ptr<CallExprAST> parse_call_expression(const std::string callee, SymbolTable& symbol_table);
     bool is_variable(SymbolTable& symbol_table, const std::string& name);
     bool is_function(const std::string& name);
 
