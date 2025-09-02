@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AST.h"
-#include <optional>
 
 class SemanticAnalyzer {
 public:
@@ -9,9 +8,13 @@ public:
     void analyze();
 
 private:
-    std::optional<semantic_exception> unary_can_execute(const UnaryExprAST& expr);
     bool can_convert_to(SymbolType old_type, SymbolType new_type);
+    const std::unique_ptr<FunctionSignatureAST>& seek_best_match_function(const CallExprAST& expr);
     SymbolType get_type(const std::unique_ptr<ExprAST>& expr);
+    std::string readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature);
+    std::string readable_function_signature(const std::unique_ptr<FunctionAST>& signature);
     std::unique_ptr<AST> ast;
-    SymbolTable* scope_symbol_table = nullptr;
+    std::unique_ptr<FunctionSignatureAST>* scope = nullptr;
+
+    friend class CodeGen;
 };

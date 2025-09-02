@@ -7,8 +7,6 @@ using SymbolTable = std::unordered_multimap<std::string, SymbolType>;
 class ExprAST {
 public:
     virtual ~ExprAST() {}
-
-    friend class SemanticAnalyzer;
 };
 
 struct FunctionArgument {
@@ -30,6 +28,7 @@ private:
     std::vector<std::unique_ptr<ExprAST>> arguments;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class VariableExprAST : public ExprAST {
@@ -40,6 +39,7 @@ private:
     std::string name;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class IntegerExprAST : public ExprAST {
@@ -49,7 +49,9 @@ public:
     }
 
 private:
-    int value;
+    const int value;
+
+    friend class CodeGen;
 };
 
 class FloatExprAST : public ExprAST {
@@ -59,7 +61,9 @@ public:
     }
 
 private:
-    float value;
+    const float value;
+
+    friend class CodeGen;
 };
 
 class StringExprAST : public ExprAST {
@@ -69,7 +73,20 @@ public:
     }
 
 private:
-    std::string string;
+    const std::string string;
+
+    friend class CodeGen;
+};
+
+class ReturnExprAST : public ExprAST {
+public:
+    ReturnExprAST(std::unique_ptr<ExprAST> expr) : expr(std::move(expr)) {}
+
+private:
+    std::unique_ptr<ExprAST> expr;
+
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class UnaryExprAST : public ExprAST {
@@ -81,6 +98,7 @@ private:
     std::unique_ptr<ExprAST> expr;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class BinaryExprAST : public ExprAST {
@@ -95,6 +113,7 @@ private:
     std::unique_ptr<ExprAST> rhs;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class FunctionSignatureAST : public ExprAST {
@@ -109,6 +128,7 @@ public:
     SymbolTable symbol_table;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class FunctionAST : public ExprAST {
@@ -116,28 +136,11 @@ public:
     FunctionAST(std::unique_ptr<FunctionSignatureAST> signature) : signature(std::move(signature)) {
     }
 
-    std::string to_string() {
-        std::string result = signature->name + '(';
-        for (auto& arg : signature->arguments) {
-            result += arg->name;
-            switch (arg->type)
-            {
-            case SYMBOL_TYPE_INT:result += '%'; break;
-            case SYMBOL_TYPE_FLOAT:result += '#'; break;
-            case SYMBOL_TYPE_STRING:result += '$'; break;
-            default: break;
-            }
-            result += ',';
-        }
-        if (signature->arguments.size() > 0) result.pop_back();
-        result.push_back(')');
-        return result;
-    }
-
     std::unique_ptr<FunctionSignatureAST> signature;
     std::vector<std::unique_ptr<ExprAST>> body;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 using FunctionTable = std::unordered_multimap<std::string, std::unique_ptr<FunctionAST>>;
@@ -150,13 +153,12 @@ public:
     void parse();
 
 private:
-    std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table);
+    std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table, bool function_first = true);
     std::unique_ptr<ExprAST> parse_primary_expression(SymbolTable& symbol_table, bool function_first = true);
-    void parse_function_definition();
-    std::unique_ptr<FunctionSignatureAST> parse_function_signature();
     std::unique_ptr<CallExprAST> parse_call_expression(const std::string callee, SymbolTable& symbol_table);
-    bool is_variable(SymbolTable& symbol_table, const std::string& name);
-    bool is_function(const std::string& name);
+    std::unique_ptr<FunctionSignatureAST> parse_function_signature();
+    void parse_function_definition();
+    int is_variable(SymbolTable& symbol_table, const std::string& name);
 
     std::unique_ptr<Lex> lex;
     SymbolTable global_symbols;
@@ -165,4 +167,5 @@ private:
     int token = 0;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };

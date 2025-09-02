@@ -1,4 +1,5 @@
 #include "AST.h"
+#include <algorithm>
 
 const std::unordered_map<int, int> op_precedence = {
     {'=', 10},{'+', 20},{'-', 20},{'*', 30},{'/', 30}
@@ -41,18 +42,21 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
     case TOKEN_IDENTIFIER:
     {
         std::string identifier = std::move(lex->identifier);
+        Token type = TOKEN_TYPE_INT;
         token = lex->get_token();
         switch (token) {
         case TOKEN_TYPE_FLOAT:
             if (!is_variable(symbol_table, identifier)) {
                 symbol_table.insert({ identifier, SYMBOL_TYPE_FLOAT });
             }
+            type = (Token)token;
             token = lex->get_token();
             break;
         case TOKEN_TYPE_STRING:
             if (!is_variable(symbol_table, identifier)) {
                 symbol_table.insert({ identifier, SYMBOL_TYPE_STRING });
             }
+            type = (Token)token;
             token = lex->get_token();
             break;
         case TOKEN_TYPE_INT:
@@ -62,8 +66,12 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
             token = lex->get_token();
         default:
             if (token == '=') {
-                if (!is_variable(symbol_table, identifier)) {
+                int symbol_type = is_variable(symbol_table, identifier);
+                if (symbol_type == 0) {
                     symbol_table.insert({ identifier, SYMBOL_TYPE_INT });
+                }
+                else if (symbol_type != token_to_type(type)) {
+                    throw ast_exception("mismatched variable type");
                 }
                 break;
             }
@@ -73,7 +81,7 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
                 return lhs;
             }
         }
-        
+
         //if (!op_precedence.contains(token) && token != '(' && token != ')') throw ast_exception("unknown operator");
         lhs = std::make_unique<VariableExprAST>(std::move(identifier));
         break;
@@ -92,7 +100,7 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
         break;
     case '(':
         token = lex->get_token();
-        lhs = std::move(parse_expression(std::move(parse_primary_expression(symbol_table, function_first)), symbol_table));
+        lhs = std::move(parse_expression(std::move(parse_primary_expression(symbol_table, function_first)), symbol_table, function_first));
         if (token != ')') throw ast_exception("expecting closing parenthesis");
         token = lex->get_token();
         break;
@@ -103,6 +111,14 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
     case TOKEN_LOGIC_NOT:
         token = lex->get_token();
         lhs = std::make_unique<UnaryExprAST>(TOKEN_LOGIC_NOT, std::move(parse_primary_expression(symbol_table, function_first)));
+        break;
+    case TOKEN_RETURN:
+        token = lex->get_token();
+        if (token == TOKEN_EOF || token == TOKEN_END_OF_STMT) {
+            lhs = std::make_unique<ReturnExprAST>(nullptr);
+            break;
+        }
+        lhs = std::make_unique<ReturnExprAST>(std::move(parse_expression(std::move(parse_primary_expression(symbol_table, false)), symbol_table, false)));
         break;
     default:
         throw ast_exception("expecting primary expression");
@@ -122,6 +138,7 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature() {
     }
     if (token != '(') throw ast_exception("expecting opening parenthesis");
     auto function = std::make_unique<FunctionSignatureAST>(name, return_value_type);
+    int mandatory_args = 0, optional_args = 0;
     do {
         this->token = lex->get_token();
         if (token == ')') break;
@@ -136,12 +153,32 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature() {
         std::unique_ptr<ExprAST> default_value = nullptr;
         if (token == '=') {
             this->token = lex->get_token();
-            default_value = parse_expression(parse_primary_expression(function->symbol_table, false), function->symbol_table);
+            default_value = parse_expression(parse_primary_expression(function->symbol_table, false), function->symbol_table, false);
+            optional_args++;
         }
+        else {
+            mandatory_args++;
+        }
+        function->symbol_table.insert({ arg_name, type });
         function->arguments.push_back(std::make_unique<FunctionArgument>(std::move(arg_name), type, std::move(default_value)));
     } while (token == ',');
     if (token != ')') throw ast_exception("expecting closing parenthesis");
     global_symbols.insert({ name, SYMBOL_TYPE_FUNCTION });
+
+    // looking for duplicate signatures...
+    auto defined = function_table.equal_range(function->name);
+    for (auto& it = defined.first; it != defined.second; ++it) {
+        int define_mandatory_args = std::count_if(it->second->signature->arguments.begin(),
+            it->second->signature->arguments.end(),
+            [](const std::unique_ptr<FunctionArgument>& arg) {
+                return arg->default_value == nullptr;
+            });
+        int define_optional_args = it->second->signature->arguments.size() - define_mandatory_args;
+        if (define_mandatory_args == mandatory_args && define_optional_args == optional_args) {
+            throw ast_exception("duplicate function signature");
+        }
+    }
+
     return function;
 }
 
@@ -172,46 +209,37 @@ std::unique_ptr<CallExprAST> AST::parse_call_expression(std::string callee, Symb
     return std::make_unique<CallExprAST>(std::move(callee), std::move(arguments));
 }
 
-std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table)
+std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table, bool function_first)
 {
     while (true) {
         int op = token;
         if (token == TOKEN_EOF || token == TOKEN_END_OF_STMT || token == ')' || token == ',') return lhs;
 
         token = lex->get_token();
-        std::unique_ptr<ExprAST> rhs = std::move(parse_primary_expression(symbol_table));
+        std::unique_ptr<ExprAST> rhs = std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first));
 
         while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != ')' &&
             op_precedence.at(op) < op_precedence.at(token)) {
             int next_op = token;
             token = lex->get_token();
-            rhs = std::make_unique<BinaryExprAST>(next_op, std::move(rhs), parse_expression(std::move(parse_primary_expression(symbol_table)), symbol_table));
+            rhs = std::make_unique<BinaryExprAST>(next_op, std::move(rhs), parse_expression(std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first)), symbol_table, op == '=' ? false : function_first));
         }
 
         lhs = std::make_unique<BinaryExprAST>(op, std::move(lhs), std::move(rhs));
     }
 }
 
-bool AST::is_variable(SymbolTable& symbol_table, const std::string& name) {
+int AST::is_variable(SymbolTable& symbol_table, const std::string& name) {
     if (symbol_table.contains(name)) {
-        auto range = symbol_table.equal_range(lex->identifier);
+        auto range = symbol_table.equal_range(name);
         for (auto it = range.first; it != range.second; ++it) {
-            if (is_variable_type(it->second)) return true;
+            if (is_variable_type(it->second)) return it->second;
         }
     }
-    if (!global_symbols.contains(name)) return false;
-    auto range = global_symbols.equal_range(lex->identifier);
+    if (!global_symbols.contains(name)) return 0;
+    auto range = global_symbols.equal_range(name);
     for (auto it = range.first; it != range.second; ++it) {
-        if (is_variable_type(it->second)) return true;
+        if (is_variable_type(it->second)) return it->second;
     }
-    return false;
-}
-
-bool AST::is_function(const std::string& name) {
-    if (!global_symbols.contains(name)) return false;
-    auto range = global_symbols.equal_range(lex->identifier);
-    for (auto it = range.first; it != range.second; ++it) {
-        if (it->second == SYMBOL_TYPE_FUNCTION) return true;
-    }
-    return false;
+    return 0;
 }

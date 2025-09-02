@@ -1,11 +1,19 @@
-(sddl# = 4 + 6 * (5 - (1)))
-hello$ = -"world"
 
 
-Function wow#(a# = 10)
-	wow(2)
+sddl# = 1+1;4 + 6 * (5 - (1))
+
+dlds% = 1.15
+
+Function wow#(a%)
+	;sd# = a + 6.51 * (5 - a)
+	
+	ld% = (sd123# = a + 30 - dlds)
+	return (a)
+
+	sd# = a + ld * (5 - (1))
+
 end function
 
-extern sin(angle)
+extern sin#(angle#)
 
-sin(a)
+;sin(a)
