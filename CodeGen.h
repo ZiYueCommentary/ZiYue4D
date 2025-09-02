@@ -5,7 +5,6 @@
 #pragma warning(disable: 4146 4996)
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/IR/IRBuilder.h>
-#include <llvm/TargetParser/Host.h>
 #pragma warning(pop)
 #include <stack>
 

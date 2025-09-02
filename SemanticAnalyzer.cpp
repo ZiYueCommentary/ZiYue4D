@@ -147,6 +147,19 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
     throw semantic_exception("unknown expression");
 }
 
+SymbolType SemanticAnalyzer::llvm_type_to_symbol_type(llvm::Type* type)
+{
+    switch (type->getTypeID())
+    {
+    case llvm::Type::IntegerTyID:
+        return SYMBOL_TYPE_INT;
+    case llvm::Type::FloatTyID:
+        return SYMBOL_TYPE_FLOAT;
+    default:
+        break;
+    }
+}
+
 std::string SemanticAnalyzer::readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature)
 {
     std::string result = signature->name + '(';

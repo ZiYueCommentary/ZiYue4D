@@ -43,7 +43,7 @@ llvm::Value* CodeGen::generate_functions()
 
     // register function signatures
     for (auto& func : semantic->ast->extern_function_table) {
-        llvm::Function::Create(create_function_type(func.second), llvm::Function::ExternalLinkage, func.first, &*module)->print(llvm::errs());
+        llvm::Function::Create(create_function_type(func.second), llvm::Function::ExternalLinkage, func.second->name, &*module)->print(llvm::errs());
     }
     for (auto& func : semantic->ast->function_table) {
         llvm::Function* function = llvm::Function::Create(create_function_type(func.second->signature), llvm::Function::ExternalLinkage, unique_function_name(func.second->signature), &*module);
@@ -195,7 +195,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         for (int i = 0; i < func->arguments.size(); i++)
         {
             built_arguments.push_back(cast_value_to(
-                visit(call.arguments.size() > i ? call.arguments.at(i) : func->arguments.at(i)->default_value), 
+                visit(call.arguments.size() > i ? call.arguments.at(i) : func->arguments.at(i)->default_value),
                 func->arguments.at(i)->type));
         }
         return builder->CreateCall(module->getFunction(unique_function_name(func)), built_arguments);
@@ -281,7 +281,7 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
     if (signature->name == "__main") return "__main";
     if (cache.contains((void*)&signature)) return cache.at((void*)&signature); // what am i doing?
 
-    auto extern_func = semantic->ast->extern_function_table.find(signature->name);
+    auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("_ziyue4d_") ? signature->name.substr(9) : signature->name);
     if (extern_func != semantic->ast->extern_function_table.end() && extern_func->second == signature) {
         cache.insert({ (void*)&signature, signature->name });
         return cache.at((void*)&signature);
@@ -339,6 +339,9 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name)
     }
 }
 
+
+#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/IRReader/IRReader.h>
 void JIT::init()
 {
     llvm::InitializeNativeTarget();
@@ -347,16 +350,16 @@ void JIT::init()
     auto jit = llvm::orc::LLJITBuilder().create();
     if (!jit) throw std::runtime_error("failed to initialize JIT");
     this->jit = std::move(*jit);
-    auto threadSafeModule = llvm::orc::ThreadSafeModule(std::move(module), std::move(context));
-    if (auto err = this->jit->addIRModule(std::move(threadSafeModule))) {
-        llvm::errs() << "Failed to add module: " << toString(std::move(err)) << "\n";
-        return;
-    }
+
+    auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
+    auto std_module = llvm::orc::ThreadSafeModule(std::move(*stdlib), std::make_unique<llvm::LLVMContext>());
+    auto program_module = llvm::orc::ThreadSafeModule(std::move(module), std::make_unique<llvm::LLVMContext>());
+    this->jit->addIRModule(std::move(std_module));
+    this->jit->addIRModule(std::move(program_module));
 }
 
 int JIT::run()
 {
-    auto targetMachine = llvm::EngineBuilder().selectTarget();
     auto sym = jit->lookup("__main");
     auto main = sym->toPtr<int (*)()>();
     int result = main();
