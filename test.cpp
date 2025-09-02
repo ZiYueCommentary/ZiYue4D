@@ -13,6 +13,7 @@ int main() {
     JIT codegen(std::make_unique<SemanticAnalyzer>(std::move(analyzer)));
     codegen.generate_functions();
     codegen.init();
+    std::cout << "Executing...\n";
     std::cout << codegen.run();
     return 0;
 }

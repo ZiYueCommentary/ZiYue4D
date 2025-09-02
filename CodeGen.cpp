@@ -40,30 +40,18 @@ llvm::Value* CodeGen::generate_functions()
         }
         }
     }
-    const auto& main = semantic->ast->function_table.equal_range("__main").first->second;
-    llvm::Function* function = llvm::Function::Create(create_function_type(main->signature), llvm::Function::ExternalLinkage, "__main", &*module);
-    llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
-    builder->SetInsertPoint(block);
-    for (const auto& expr : main->body) {
-        if (builder->GetInsertBlock()->getTerminator() != nullptr) {
-            llvm::errs() << "unreachable code\n";
-            break;
-        }
-        visit(expr);
-    }
-    if (builder->GetInsertBlock()->getTerminator() == nullptr) {
-        builder->CreateRet(llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)));
-    }
-    llvm::verifyFunction(*function, &llvm::errs());
-    function->print(llvm::errs());
 
-    // register functions
+    // register function signatures
     for (auto& func : semantic->ast->extern_function_table) {
         llvm::Function::Create(create_function_type(func.second), llvm::Function::ExternalLinkage, func.first, &*module)->print(llvm::errs());
     }
     for (auto& func : semantic->ast->function_table) {
-        if (func.first == "__main") continue;
         llvm::Function* function = llvm::Function::Create(create_function_type(func.second->signature), llvm::Function::ExternalLinkage, unique_function_name(func.second->signature), &*module);
+    }
+
+    // register function definations
+    for (auto& func : semantic->ast->function_table) {
+        llvm::Function* function = module->getFunction(unique_function_name(func.second->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
         scoped_symbol_table.push_back({});
         builder->SetInsertPoint(block);
@@ -200,6 +188,18 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         auto& var = dynamic_cast<const VariableExprAST&>(*expr);
         return find_variable_value(var.name);
     }
+    if (typeid(*expr) == typeid(CallExprAST)) {
+        auto& call = dynamic_cast<const CallExprAST&>(*expr);
+        auto& func = semantic->seek_best_match_function(call);
+        std::vector<llvm::Value*> built_arguments = {};
+        for (int i = 0; i < func->arguments.size(); i++)
+        {
+            built_arguments.push_back(cast_value_to(
+                visit(call.arguments.size() > i ? call.arguments.at(i) : func->arguments.at(i)->default_value), 
+                func->arguments.at(i)->type));
+        }
+        return builder->CreateCall(module->getFunction(unique_function_name(func)), built_arguments);
+    }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<const ReturnExprAST&>(*expr);
         builder->CreateRet(cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type));
@@ -275,10 +275,17 @@ llvm::Type* CodeGen::symbol_type_to_type(SymbolType type)
     }
 }
 
-const std::string& CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature)
+std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature)
 {
     static std::map<void*, std::string> cache = {};
+    if (signature->name == "__main") return "__main";
     if (cache.contains((void*)&signature)) return cache.at((void*)&signature); // what am i doing?
+
+    auto extern_func = semantic->ast->extern_function_table.find(signature->name);
+    if (extern_func != semantic->ast->extern_function_table.end() && extern_func->second == signature) {
+        cache.insert({ (void*)&signature, signature->name });
+        return cache.at((void*)&signature);
+    }
 
     int mandatory_args = std::count_if(signature->arguments.begin(),
         signature->arguments.end(),
@@ -350,11 +357,8 @@ void JIT::init()
 int JIT::run()
 {
     auto targetMachine = llvm::EngineBuilder().selectTarget();
-    //module->setDataLayout(targetMachine->createDataLayout());
     auto sym = jit->lookup("__main");
-
-    using Main = int (*)();
-    auto main = (sym->toPtr<Main>());
+    auto main = sym->toPtr<int (*)()>();
     int result = main();
     return result;
 }
