@@ -3,6 +3,13 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 
+#ifdef _WIN32
+#pragma comment(linker, "/export:??_7type_info@@6B@")
+#pragma comment(linker, "/export:??_U@YAPEAX_K@Z")
+#pragma comment(linker, "/export:??_V@YAXPEAX@Z")
+#pragma comment(linker, "/export:??3@YAXPEAX_K@Z")
+#endif
+
 llvm::Value* CodeGen::generate_functions()
 {
     // register global variables & main entry
@@ -54,6 +61,7 @@ llvm::Value* CodeGen::generate_functions()
         llvm::Function* function = module->getFunction(unique_function_name(func.second->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
         scoped_symbol_table.push_back({});
+        string_lifecycles.push({ true, {} });
         builder->SetInsertPoint(block);
         for (const auto& symbol : func.second->signature->symbol_table) {
             switch (symbol.second) {
@@ -62,6 +70,9 @@ llvm::Value* CodeGen::generate_functions()
                 break;
             case SYMBOL_TYPE_FLOAT:
                 scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)) });
+                break;
+            case SYMBOL_TYPE_STRING:
+                scoped_symbol_table.back().insert({ symbol.first, build_literal_string("") });
                 break;
             }
         }
@@ -80,6 +91,7 @@ llvm::Value* CodeGen::generate_functions()
             visit(expr);
         }
         if (builder->GetInsertBlock()->getTerminator() == nullptr) {
+            release_lifecycle_string(true);
             switch (func.second->signature->return_value_type) {
             case SYMBOL_TYPE_FLOAT:
                 builder->CreateRet(llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)));
@@ -109,9 +121,8 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         return llvm::ConstantInt::get(*context, llvm::APInt(32, int_expr.value, true));
     }
     if (typeid(*expr) == typeid(StringExprAST)) {
-        throw codegen_exception("unimplemented");
-    }
-    if (typeid(*expr) == typeid(CallExprAST)) {
+        auto& string = dynamic_cast<const StringExprAST&>(*expr);
+        return build_literal_string(string.string);
     }
     if (typeid(*expr) == typeid(UnaryExprAST)) {
         auto& unary_expr = dynamic_cast<const UnaryExprAST&>(*expr);
@@ -202,7 +213,9 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<const ReturnExprAST&>(*expr);
-        builder->CreateRet(cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type));
+        llvm::Value* return_value = cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type);
+        release_lifecycle_string(true, return_value);
+        builder->CreateRet(return_value);
     }
     return nullptr;
 }
@@ -253,6 +266,7 @@ llvm::Type* CodeGen::token_to_type(Token token)
     case TOKEN_TYPE_FLOAT:
         return llvm::Type::getFloatTy(*context);
     case TOKEN_TYPE_STRING:
+        return llvm::PointerType::get(*context, 0);
         break;
     default:
         break;
@@ -267,11 +281,10 @@ llvm::Type* CodeGen::symbol_type_to_type(SymbolType type)
         return llvm::Type::getInt32Ty(*context);
     case SYMBOL_TYPE_FLOAT:
         return llvm::Type::getFloatTy(*context);
-    case SYMBOL_TYPE_STRING:
     case SYMBOL_TYPE_FUNCTION:
     case SYMBOL_TYPE_STRUCT:
     default:
-        throw codegen_exception("unimplemented");
+        return llvm::PointerType::get(*context, 0);
     }
 }
 
@@ -339,6 +352,30 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name)
     }
 }
 
+void CodeGen::release_lifecycle_string(bool is_function_return, llvm::Value* string_return_value)
+{
+    while (string_lifecycles.size() > 0) {
+        for (auto string : string_lifecycles.top().strings) {
+            if (string != string_return_value) {
+                builder->CreateCall(module->getFunction("_ziyue4d_release_string__"), { string });
+            }
+        }
+        if ((!is_function_return) || (is_function_return && string_lifecycles.top().is_function)) {
+            string_lifecycles.pop();
+            break;
+        }
+        else {
+            string_lifecycles.pop();
+        }
+    }
+}
+
+llvm::Value* CodeGen::build_literal_string(const std::string& str)
+{
+    llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { builder->CreateGlobalStringPtr(str) });
+    string_lifecycles.top().strings.insert(built_string);
+    return built_string;
+}
 
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/IRReader/IRReader.h>
@@ -347,10 +384,14 @@ void JIT::init()
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
+    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
     auto jit = llvm::orc::LLJITBuilder().create();
     if (!jit) throw std::runtime_error("failed to initialize JIT");
     this->jit = std::move(*jit);
-
+    this->jit->getMainJITDylib().addGenerator(
+        llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            this->jit->getDataLayout().getGlobalPrefix()))
+    );
     auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
     auto std_module = llvm::orc::ThreadSafeModule(std::move(*stdlib), std::make_unique<llvm::LLVMContext>());
     auto program_module = llvm::orc::ThreadSafeModule(std::move(module), std::make_unique<llvm::LLVMContext>());

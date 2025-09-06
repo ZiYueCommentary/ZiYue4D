@@ -156,7 +156,7 @@ SymbolType SemanticAnalyzer::llvm_type_to_symbol_type(llvm::Type* type)
     case llvm::Type::FloatTyID:
         return SYMBOL_TYPE_FLOAT;
     default:
-        break;
+        return SYMBOL_TYPE_STRING;
     }
 }
 

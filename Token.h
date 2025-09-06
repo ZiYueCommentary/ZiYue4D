@@ -25,7 +25,9 @@ enum SymbolType {
     SYMBOL_TYPE_FLOAT,
     SYMBOL_TYPE_STRING,
     SYMBOL_TYPE_FUNCTION,
-    SYMBOL_TYPE_STRUCT
+    SYMBOL_TYPE_STRUCT,
+    SYMBOL_TYPE_VOID,
+    SYMBOL_TYPE_POINTER
 };
 
 const std::unordered_map<std::string, Token> tokens = {

@@ -2,18 +2,12 @@
 
 sddl# = 1+1;4 + 6 * (5 - (1))
 
-dlds% = 1 + sinf(100)
-wow()
+print wow(10.0)
 
-
-
-return wow(1234)
-
-
-Function wow#(a% = 1145)
-return sin(1.3) * 100
+Function wow$(a% = 1145)
+dl$ = "shuodedaoli"
+print (dl$)
+return dl$
 end function
-
-extern sinf#(angle#)
 
 ;sin(a)
