@@ -4,9 +4,8 @@
 
 _STDLIB_BEGIN
 
-int _STDLIB(print)(ZStr str) {
+void _STDLIB(print)(ZStr str) {
     puts(str->c_str());
-    return 0;
 }
 
 _STDLIB_END

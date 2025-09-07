@@ -155,8 +155,10 @@ SymbolType SemanticAnalyzer::llvm_type_to_symbol_type(llvm::Type* type)
         return SYMBOL_TYPE_INT;
     case llvm::Type::FloatTyID:
         return SYMBOL_TYPE_FLOAT;
+    case llvm::Type::VoidTyID:
+        return SYMBOL_TYPE_VOID;
     default:
-        return SYMBOL_TYPE_STRING;
+        return SYMBOL_TYPE_POINTER;
     }
 }
 

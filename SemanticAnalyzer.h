@@ -13,11 +13,19 @@ public:
         auto module = llvm::parseBitcodeFile(**stdlibBuffer, dummy_context);
         auto& functions = module.get()->getFunctionList();
         for (const auto& func : functions) {
+            llvm::errs() << func.hasMetadata();
             if (!func.getName().starts_with("_ziyue4d_")) continue;
-            auto signature = std::make_unique<FunctionSignatureAST>(func.getName().str(), llvm_type_to_symbol_type(func.getReturnType()));
+            auto signature = std::make_unique<FunctionSignatureAST>(
+                func.getName().str(),
+                (func.hasMetadata("ziyue4d_string")) ? SYMBOL_TYPE_STRING : llvm_type_to_symbol_type(func.getReturnType())
+            );
             for (size_t i = 0; i < func.arg_size(); i++)
             {
-                signature->arguments.push_back(std::move(std::make_unique<FunctionArgument>(func.getArg(i)->getName().str(), llvm_type_to_symbol_type(func.getArg(i)->getType()), nullptr)));
+                signature->arguments.push_back(std::move(std::make_unique<FunctionArgument>(
+                    func.getArg(i)->getName().str(),
+                    /*func.getArg(i)->hasMetadata("ziyue4d_string") ? SYMBOL_TYPE_STRING : */ llvm_type_to_symbol_type(func.getArg(i)->getType()),
+                    nullptr
+                )));
             }
             this->ast->extern_function_table.insert({ func.getName().substr(9).str(), std::move(signature) });
         }

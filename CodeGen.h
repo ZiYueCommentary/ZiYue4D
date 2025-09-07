@@ -8,9 +8,9 @@
 #pragma warning(pop)
 #include <stack>
 
-struct StringLifecycle {
+struct Lifecycle {
     bool is_function;
-    std::set<llvm::Value*> strings;
+    std::set<llvm::Value*> values;
 };
 
 class CodeGen {
@@ -32,14 +32,14 @@ private:
     std::string unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature);
     void update_variable_value(const std::string& name, llvm::Value* value);
     llvm::Value* find_variable_value(const std::string& name);
-    void release_lifecycle_string(bool is_function_return = false, llvm::Value* string_return_value = nullptr);
+    void release_lifecycle_resources(bool is_function_return = false, llvm::Value* string_return_value = nullptr);
     llvm::Value* build_literal_string(const std::string& str);
 
     std::unique_ptr<llvm::LLVMContext> context;
     std::unique_ptr<llvm::IRBuilder<>> builder;
     std::unique_ptr<llvm::Module> module;
     std::vector<std::unordered_map<std::string, llvm::Value*>> scoped_symbol_table = { {} };
-    std::stack<StringLifecycle> string_lifecycles;
+    std::stack<Lifecycle> lifecycles;
     std::unique_ptr<SemanticAnalyzer> semantic;
 
     friend class JIT;

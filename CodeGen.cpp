@@ -61,7 +61,7 @@ llvm::Value* CodeGen::generate_functions()
         llvm::Function* function = module->getFunction(unique_function_name(func.second->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
         scoped_symbol_table.push_back({});
-        string_lifecycles.push({ true, {} });
+        lifecycles.push({ true, {} });
         builder->SetInsertPoint(block);
         for (const auto& symbol : func.second->signature->symbol_table) {
             switch (symbol.second) {
@@ -91,7 +91,7 @@ llvm::Value* CodeGen::generate_functions()
             visit(expr);
         }
         if (builder->GetInsertBlock()->getTerminator() == nullptr) {
-            release_lifecycle_string(true);
+            release_lifecycle_resources(true);
             switch (func.second->signature->return_value_type) {
             case SYMBOL_TYPE_FLOAT:
                 builder->CreateRet(llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)));
@@ -157,6 +157,33 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         case '-':
         case '*':
         case '/':
+            if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
+                llvm::Value* new_lhs = lhs;
+                llvm::Value* new_rhs = rhs;
+                if (lhs_type == SYMBOL_TYPE_INT) {
+                    new_lhs = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { lhs });
+                    lifecycles.top().values.insert(new_lhs);
+                }
+                if (lhs_type == SYMBOL_TYPE_FLOAT) {
+                    new_lhs = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { lhs });
+                    lifecycles.top().values.insert(new_lhs);
+                }
+                if (rhs_type == SYMBOL_TYPE_INT) {
+                    new_rhs = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { rhs });
+                    lifecycles.top().values.insert(new_rhs);
+                }
+                if (rhs_type == SYMBOL_TYPE_FLOAT) {
+                    new_rhs = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { rhs });
+                    lifecycles.top().values.insert(new_rhs);
+                }
+                if (bi_expr.op == '+') {
+                    llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
+                    lifecycles.top().values.insert(new_string);
+                    return new_string;
+                }
+                return nullptr;
+            }
+
             if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) {
                 llvm::Value* new_lhs = lhs;
                 llvm::Value* new_rhs = rhs;
@@ -214,7 +241,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<const ReturnExprAST&>(*expr);
         llvm::Value* return_value = cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type);
-        release_lifecycle_string(true, return_value);
+        release_lifecycle_resources(true, return_value);
         builder->CreateRet(return_value);
     }
     return nullptr;
@@ -281,6 +308,10 @@ llvm::Type* CodeGen::symbol_type_to_type(SymbolType type)
         return llvm::Type::getInt32Ty(*context);
     case SYMBOL_TYPE_FLOAT:
         return llvm::Type::getFloatTy(*context);
+    case SYMBOL_TYPE_STRING:
+        return llvm::PointerType::get(*context, 0);
+    case SYMBOL_TYPE_VOID:
+        return llvm::Type::getVoidTy(*context);
     case SYMBOL_TYPE_FUNCTION:
     case SYMBOL_TYPE_STRUCT:
     default:
@@ -352,20 +383,20 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name)
     }
 }
 
-void CodeGen::release_lifecycle_string(bool is_function_return, llvm::Value* string_return_value)
+void CodeGen::release_lifecycle_resources(bool is_function_return, llvm::Value* return_value)
 {
-    while (string_lifecycles.size() > 0) {
-        for (auto string : string_lifecycles.top().strings) {
-            if (string != string_return_value) {
-                builder->CreateCall(module->getFunction("_ziyue4d_release_string__"), { string });
+    while (lifecycles.size() > 0) {
+        for (auto value : lifecycles.top().values) {
+            if (value != return_value) {
+                builder->CreateCall(module->getFunction("_ziyue4d_release_string__"), { value });
             }
         }
-        if ((!is_function_return) || (is_function_return && string_lifecycles.top().is_function)) {
-            string_lifecycles.pop();
+        if ((!is_function_return) || (is_function_return && lifecycles.top().is_function)) {
+            lifecycles.pop();
             break;
         }
         else {
-            string_lifecycles.pop();
+            lifecycles.pop();
         }
     }
 }
@@ -373,7 +404,7 @@ void CodeGen::release_lifecycle_string(bool is_function_return, llvm::Value* str
 llvm::Value* CodeGen::build_literal_string(const std::string& str)
 {
     llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { builder->CreateGlobalStringPtr(str) });
-    string_lifecycles.top().strings.insert(built_string);
+    lifecycles.top().values.insert(built_string);
     return built_string;
 }
 

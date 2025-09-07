@@ -6,4 +6,10 @@
 #define _STDLIB_BEGIN extern "C" {
 #define _STDLIB_END }
 
-using ZStr = const std::string*;
+#ifdef _WIN64
+#define INT int64_t
+#else
+#define INT int32_t
+#endif
+
+#define ZStr const std::string* __attribute__((annotate("ziyue4d_string")))

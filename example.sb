@@ -6,7 +6,7 @@ print wow(10.0)
 
 Function wow$(a% = 1145)
 dl$ = "shuodedaoli"
-print (dl$)
+print (dl$+ 1)
 return dl$
 end function
 
