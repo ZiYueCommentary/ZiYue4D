@@ -236,7 +236,9 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
                 visit(call.arguments.size() > i ? call.arguments.at(i) : func->arguments.at(i)->default_value),
                 func->arguments.at(i)->type));
         }
-        return builder->CreateCall(module->getFunction(unique_function_name(func)), built_arguments);
+        llvm::Value* ret_val = builder->CreateCall(module->getFunction(unique_function_name(func)), built_arguments);
+        if (func->return_value_type == SYMBOL_TYPE_STRING) lifecycles.top().values.insert(ret_val);
+        return ret_val;
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<const ReturnExprAST&>(*expr);

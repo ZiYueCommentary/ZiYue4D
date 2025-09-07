@@ -13,7 +13,6 @@ public:
         auto module = llvm::parseBitcodeFile(**stdlibBuffer, dummy_context);
         auto& functions = module.get()->getFunctionList();
         for (const auto& func : functions) {
-            llvm::errs() << func.hasMetadata();
             if (!func.getName().starts_with("_ziyue4d_")) continue;
             auto signature = std::make_unique<FunctionSignatureAST>(
                 func.getName().str(),
