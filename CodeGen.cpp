@@ -2,6 +2,8 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/IRReader/IRReader.h>
 
 #ifdef _WIN32
 #pragma comment(linker, "/export:??_7type_info@@6B@")
@@ -410,8 +412,6 @@ llvm::Value* CodeGen::build_literal_string(const std::string& str)
     return built_string;
 }
 
-#include <llvm/Support/MemoryBuffer.h>
-#include <llvm/IRReader/IRReader.h>
 void JIT::init()
 {
     llvm::InitializeNativeTarget();
@@ -434,6 +434,7 @@ void JIT::init()
 
 int JIT::run()
 {
+    jit->initialize(jit->getMainJITDylib());
     auto sym = jit->lookup("__main");
     auto main = sym->toPtr<int (*)()>();
     int result = main();

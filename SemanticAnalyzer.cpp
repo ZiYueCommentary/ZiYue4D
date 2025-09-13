@@ -30,6 +30,10 @@ void SemanticAnalyzer::analyze()
 bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) {
     if (old_type == new_type) return true;
     switch (old_type) {
+    case SYMBOL_TYPE_VOID:
+        return false;
+    case SYMBOL_TYPE_STRING:
+        return new_type == SYMBOL_TYPE_STRING || new_type == SYMBOL_TYPE_POINTER;
     case SYMBOL_TYPE_INT:
         return new_type == SYMBOL_TYPE_FLOAT || new_type == SYMBOL_TYPE_STRING;
     case SYMBOL_TYPE_FLOAT:
@@ -104,17 +108,31 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         SymbolType lhs_type = get_type(biexpr.lhs);
         SymbolType rhs_type = get_type(biexpr.rhs);
         if (biexpr.op == '=') {
-            switch (lhs_type)
-            {
-            case SYMBOL_TYPE_INT:
-                if (rhs_type == SYMBOL_TYPE_FLOAT) {
-                    std::cerr << "unsafe conversion: float to int may cause precision loss\n";
+            if (rhs_type != SYMBOL_TYPE_VOID) {
+                switch (lhs_type)
+                {
+                case SYMBOL_TYPE_INT:
+                    if (rhs_type == SYMBOL_TYPE_POINTER) {
+                        std::cerr << "deprecated: assigning pointer to a integer variable, please use * for pointer type instead.";
+                        return SYMBOL_TYPE_POINTER;
+                    }
+                    if (rhs_type == SYMBOL_TYPE_FLOAT) {
+                        std::cerr << "unsafe conversion: float to int may cause precision loss\n";
+                    }
+                case SYMBOL_TYPE_FLOAT:
+                    if (rhs_type != SYMBOL_TYPE_STRING) return lhs_type;
+                    break;
+                case SYMBOL_TYPE_STRING:
+                    if (rhs_type == SYMBOL_TYPE_POINTER) {
+                        std::cerr << "undefined behavior: assigning a pointer to a string variable, please use * for pointer type instead.";
+                    }
+                    return lhs_type;
+                case SYMBOL_TYPE_POINTER:
+                    if (rhs_type == SYMBOL_TYPE_POINTER || rhs_type == SYMBOL_TYPE_STRING) {
+                        if (rhs_type == SYMBOL_TYPE_STRING) std::cerr << "undefined behavior: assigning a string to a pointer variable. lifecycle of string is managed by ZiYue4D, the pointer may be a wild pointer.";
+                        return lhs_type;
+                    }
                 }
-            case SYMBOL_TYPE_FLOAT:
-                if (rhs_type != SYMBOL_TYPE_STRING) return lhs_type;
-                break;
-            case SYMBOL_TYPE_STRING:
-                return lhs_type;
             }
             throw semantic_exception("bad conversion");
         }
