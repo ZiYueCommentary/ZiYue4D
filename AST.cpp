@@ -7,8 +7,8 @@ const std::unordered_map<int, int> op_precedence = {
 
 void AST::parse()
 {
-    global_symbols.insert({ "__main", SYMBOL_TYPE_FUNCTION });
-    auto signature = std::make_unique<FunctionSignatureAST>("__main", SYMBOL_TYPE_INT);
+    global_symbols.insert({ "main", SYMBOL_TYPE_FUNCTION });
+    auto signature = std::make_unique<FunctionSignatureAST>("main", SYMBOL_TYPE_INT);
     auto function = std::make_unique<FunctionAST>(std::move(signature));
     while (true) {
         //try {
@@ -32,7 +32,7 @@ void AST::parse()
         //    while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT) { this->token = lex->get_token(); }
         //}
     }
-    function_table.emplace("__main", std::move(function));
+    function_table.emplace("main", std::move(function));
 }
 
 std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table, bool function_first)

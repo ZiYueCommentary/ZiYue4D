@@ -326,7 +326,7 @@ llvm::Type* CodeGen::symbol_type_to_type(SymbolType type)
 std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature)
 {
     static std::map<void*, std::string> cache = {};
-    if (signature->name == "__main") return "__main";
+    if (signature->name == "main") return "main";
     if (cache.contains((void*)&signature)) return cache.at((void*)&signature); // what am i doing?
 
     auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("_ziyue4d_") ? signature->name.substr(9) : signature->name);
@@ -435,7 +435,7 @@ void JIT::init()
 int JIT::run()
 {
     jit->initialize(jit->getMainJITDylib());
-    auto sym = jit->lookup("__main");
+    auto sym = jit->lookup("main");
     auto main = sym->toPtr<int (*)()>();
     int result = main();
     return result;
