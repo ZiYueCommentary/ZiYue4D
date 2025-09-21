@@ -234,6 +234,7 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
     switch (value->getType()->getTypeID()) {
     case llvm::Type::IntegerTyID:
         switch (type) {
+        case SYMBOL_TYPE_POINTER:
         case SYMBOL_TYPE_STRING:
         {
             llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { value });
@@ -251,6 +252,7 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
         }
     case llvm::Type::FloatTyID:
         switch (type) {
+        case SYMBOL_TYPE_POINTER:
         case SYMBOL_TYPE_STRING:
         {
             llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { value });

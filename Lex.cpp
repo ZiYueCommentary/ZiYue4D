@@ -19,6 +19,25 @@ int Lex::get_token() {
 
     if (last_char == '\n' || last_char == ':') { last_char = file->get(); return TOKEN_END_OF_STMT; }
 
+    if (last_char == ';') {
+        do {
+            last_char = file->get();
+        } while (last_char != EOF && last_char != '\n' && last_char != '\r');
+        if (last_char != EOF) return get_token();
+    }
+
+    if (last_char == '/') {
+        if ((last_char = file->get()) == '*') {
+            do {
+                last_char = file->get();
+            } while (last_char != EOF && !(last_char == '*' && (last_char = file->get()) == '/'));
+            last_char = file->get();
+        }
+        else {
+            return '/';
+        }
+    }
+
     while (isspace(last_char)) last_char = file->get();
     if (last_char == '%') { last_char = file->get(); return TOKEN_TYPE_INT; }
     if (last_char == '#') { last_char = file->get(); return TOKEN_TYPE_FLOAT; }
@@ -60,13 +79,6 @@ int Lex::get_token() {
         while (is_alpha(last_char = file->get()) || isdigit(last_char)) identifier += tolower(last_char);
         if (tokens.contains(identifier)) return tokens.at(identifier);
         return TOKEN_IDENTIFIER;
-    }
-
-    if (last_char == ';') {
-        do {
-            last_char = file->get();
-        } while (last_char != EOF && last_char != '\n' && last_char != '\r');
-        if (last_char != EOF) return get_token();
     }
 
     if (last_char == EOF) return TOKEN_EOF;

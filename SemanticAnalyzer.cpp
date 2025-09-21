@@ -158,6 +158,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<ReturnExprAST&>(*expr);
+        if (ret.expr == nullptr) return (*scope)->return_value_type;
         SymbolType type = get_type(ret.expr);
         if (!can_convert_to(type, (*scope)->return_value_type)) throw semantic_exception("mismatched return value type");
         return type;
