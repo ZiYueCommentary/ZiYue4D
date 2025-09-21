@@ -1,5 +1,19 @@
 #include "Lex.h"
 
+#include <string>
+#include <unordered_set>
+#include <iostream>
+
+const std::unordered_set<char> operator_chars = {
+    '+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|',
+    '^', '~', '?', ':', '.', ',', ';', '(', ')', '[', ']', '{', '}', '$', '#',
+    EOF, '\n', '\r', ' '
+};
+
+bool is_alpha(int c) {
+    return ((c & 0x80) != 0 || !operator_chars.contains(c)) && c != EOF;
+}
+
 int Lex::get_token() {
     static int last_char = ' ';    
 
@@ -10,6 +24,7 @@ int Lex::get_token() {
     if (last_char == '#') { last_char = file->get(); return TOKEN_TYPE_FLOAT; }
     if (last_char == '$') { last_char = file->get(); return TOKEN_TYPE_STRING; }
     if (last_char == '!') { last_char = file->get(); return TOKEN_LOGIC_NOT; }
+    if (last_char == '*') { last_char = file->get(); return TOKEN_TYPE_POINTER; }
 
     if (last_char == '\"') {
         string_value.clear();
@@ -19,13 +34,6 @@ int Lex::get_token() {
         }
         last_char = file->get();
         return TOKEN_STRING;
-    }
-
-    if (isalpha(last_char)) {
-        identifier = tolower(last_char);
-        while (isalnum(last_char = file->get())) identifier += tolower(last_char);
-        if (tokens.contains(identifier)) return tokens.at(identifier);
-        return TOKEN_IDENTIFIER;
     }
 
     if (isdigit(last_char) || last_char == '.') {
@@ -45,6 +53,13 @@ int Lex::get_token() {
             float_value = strtof(number.c_str(), nullptr);
         }
         return type;
+    }
+
+    if (is_alpha(last_char)) {
+        identifier = tolower(last_char);
+        while (is_alpha(last_char = file->get()) || isdigit(last_char)) identifier += tolower(last_char);
+        if (tokens.contains(identifier)) return tokens.at(identifier);
+        return TOKEN_IDENTIFIER;
     }
 
     if (last_char == ';') {

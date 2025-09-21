@@ -27,7 +27,6 @@ llvm::Value* CodeGen::generate_functions()
                 llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)),
                 symbol.first
             );
-            variable->print(llvm::errs());
             llvm::errs() << '\n';
             scoped_symbol_table.back().insert({ symbol.first, variable });
             break;
@@ -42,7 +41,6 @@ llvm::Value* CodeGen::generate_functions()
                 llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)),
                 symbol.first
             );
-            variable->print(llvm::errs());
             llvm::errs() << '\n';
             scoped_symbol_table.back().insert({ symbol.first, variable });
             break;
@@ -52,10 +50,10 @@ llvm::Value* CodeGen::generate_functions()
 
     // register function signatures
     for (auto& func : semantic->ast->extern_function_table) {
-        llvm::Function::Create(create_function_type(func.second), llvm::Function::ExternalLinkage, func.second->name, &*module)->print(llvm::errs());
+        llvm::Function::Create(create_function_type(func.second), llvm::Function::ExternalLinkage, func.second->name, &*module);
     }
     for (auto& func : semantic->ast->function_table) {
-        llvm::Function* function = llvm::Function::Create(create_function_type(func.second->signature), llvm::Function::ExternalLinkage, unique_function_name(func.second->signature), &*module);
+        llvm::Function::Create(create_function_type(func.second->signature), llvm::Function::ExternalLinkage, unique_function_name(func.second->signature), &*module);
     }
 
     // register function definations
@@ -104,7 +102,6 @@ llvm::Value* CodeGen::generate_functions()
             }
         }
         llvm::verifyFunction(*function);
-        function->print(llvm::errs());
         semantic->scope = nullptr;
         scoped_symbol_table.pop_back();
     }
@@ -130,6 +127,9 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         auto& unary_expr = dynamic_cast<const UnaryExprAST&>(*expr);
         llvm::Value* value = visit(unary_expr.expr);
         SymbolType type = semantic->get_type(unary_expr.expr);
+        if (type != SYMBOL_TYPE_INT && type != SYMBOL_TYPE_FLOAT) {
+            throw semantic_exception("illegal unary operation");
+        }
         switch (unary_expr.op) {
         case TOKEN_LOGIC_NOT:
             if (type == SYMBOL_TYPE_INT) {
@@ -160,24 +160,8 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         case '*':
         case '/':
             if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
-                llvm::Value* new_lhs = lhs;
-                llvm::Value* new_rhs = rhs;
-                if (lhs_type == SYMBOL_TYPE_INT) {
-                    new_lhs = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { lhs });
-                    lifecycles.top().values.insert(new_lhs);
-                }
-                if (lhs_type == SYMBOL_TYPE_FLOAT) {
-                    new_lhs = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { lhs });
-                    lifecycles.top().values.insert(new_lhs);
-                }
-                if (rhs_type == SYMBOL_TYPE_INT) {
-                    new_rhs = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { rhs });
-                    lifecycles.top().values.insert(new_rhs);
-                }
-                if (rhs_type == SYMBOL_TYPE_FLOAT) {
-                    new_rhs = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { rhs });
-                    lifecycles.top().values.insert(new_rhs);
-                }
+                llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
+                llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
                 if (bi_expr.op == '+') {
                     llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
                     lifecycles.top().values.insert(new_string);
@@ -187,14 +171,8 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             }
 
             if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) {
-                llvm::Value* new_lhs = lhs;
-                llvm::Value* new_rhs = rhs;
-                if (lhs_type == SYMBOL_TYPE_INT) {
-                    new_lhs = builder->CreateSIToFP(lhs, llvm::Type::getFloatTy(*context));
-                }
-                if (rhs_type == SYMBOL_TYPE_INT) {
-                    new_rhs = builder->CreateSIToFP(rhs, llvm::Type::getFloatTy(*context));
-                }
+                llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_FLOAT);
+                llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_FLOAT);
                 switch (bi_expr.op) {
                 case '+':
                     return builder->CreateFAdd(new_lhs, new_rhs);
@@ -256,9 +234,14 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
     switch (value->getType()->getTypeID()) {
     case llvm::Type::IntegerTyID:
         switch (type) {
+        case SYMBOL_TYPE_STRING:
+        {
+            llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { value });
+            lifecycles.top().values.insert(new_value);
+            return new_value;
+        }
         case SYMBOL_TYPE_FLOAT:
             return builder->CreateSIToFP(value, llvm::Type::getFloatTy(*context));
-        case SYMBOL_TYPE_STRING:
         case SYMBOL_TYPE_INT:
             if (value->getType() == builder->getInt1Ty()) { // bool to int32
                 return builder->CreateZExt(value, builder->getInt32Ty());
@@ -268,9 +251,14 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
         }
     case llvm::Type::FloatTyID:
         switch (type) {
-        case SYMBOL_TYPE_INT:
-            return builder->CreateFPToSI(value, llvm::Type::getInt32Ty(*context));
         case SYMBOL_TYPE_STRING:
+        {
+            llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { value });
+            lifecycles.top().values.insert(new_value);
+            return new_value;
+        }
+        case SYMBOL_TYPE_INT:
+            return builder->CreateFPToSI(builder->CreateCall(module->getFunction("_ziyue4d_round"), value), llvm::Type::getInt32Ty(*context));
         default:
             return value;
         }
@@ -426,6 +414,8 @@ void JIT::init()
             this->jit->getDataLayout().getGlobalPrefix()))
     );
     auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
+    module->setTargetTriple(stdlib->get()->getTargetTriple());
+    module->print(llvm::errs(), nullptr);
     auto std_module = llvm::orc::ThreadSafeModule(std::move(*stdlib), std::make_unique<llvm::LLVMContext>());
     auto program_module = llvm::orc::ThreadSafeModule(std::move(module), std::make_unique<llvm::LLVMContext>());
     this->jit->addIRModule(std::move(std_module));

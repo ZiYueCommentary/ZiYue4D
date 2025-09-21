@@ -17,7 +17,8 @@ enum Token {
     TOKEN_RETURN,
     TOKEN_TYPE_INT,
     TOKEN_TYPE_FLOAT,
-    TOKEN_TYPE_STRING
+    TOKEN_TYPE_STRING,
+    TOKEN_TYPE_POINTER
 };
 
 enum SymbolType {

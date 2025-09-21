@@ -59,6 +59,13 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
             type = (Token)token;
             token = lex->get_token();
             break;
+        case TOKEN_TYPE_POINTER:
+            if (!is_variable(symbol_table, identifier)) {
+                symbol_table.insert({ identifier, SYMBOL_TYPE_POINTER });
+            }
+            type = (Token)token;
+            token = lex->get_token();
+            break;
         case TOKEN_TYPE_INT:
             if (!is_variable(symbol_table, identifier)) {
                 symbol_table.insert({ identifier, SYMBOL_TYPE_INT });
@@ -77,7 +84,7 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
             }
             if (token == '(' || function_first) { // must be function call
                 lhs = parse_call_expression(std::move(identifier), symbol_table);
-                token = lex->get_token();
+                //token = lex->get_token();
                 return lhs;
             }
         }
@@ -206,6 +213,7 @@ std::unique_ptr<CallExprAST> AST::parse_call_expression(std::string callee, Symb
         std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(symbol_table, false));
         arguments.push_back(std::move(parse_expression(std::move(lhs), symbol_table)));
     } while (token == ',');
+    if (token == ')') this->token = lex->get_token();
     return std::make_unique<CallExprAST>(std::move(callee), std::move(arguments));
 }
 

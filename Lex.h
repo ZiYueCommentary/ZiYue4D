@@ -5,7 +5,7 @@
 #include <fstream>
 
 constexpr bool is_variable_type(SymbolType type) {
-    return type == SYMBOL_TYPE_INT || type == SYMBOL_TYPE_FLOAT || type == SYMBOL_TYPE_STRING || type == SYMBOL_TYPE_STRUCT;
+    return type == SYMBOL_TYPE_INT || type == SYMBOL_TYPE_FLOAT || type == SYMBOL_TYPE_STRING || type == SYMBOL_TYPE_STRUCT || type == SYMBOL_TYPE_POINTER;
 }
 
 constexpr SymbolType token_to_type(Token token) {
@@ -17,6 +17,8 @@ constexpr SymbolType token_to_type(Token token) {
         return SYMBOL_TYPE_FLOAT;
     case TOKEN_TYPE_STRING:
         return SYMBOL_TYPE_STRING;
+    case TOKEN_TYPE_POINTER:
+        return SYMBOL_TYPE_POINTER;
     default:
         throw lex_exception("invalid type token");
     }

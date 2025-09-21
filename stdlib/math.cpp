@@ -21,4 +21,8 @@ float _STDLIB(sqr)(float x) {
     return sqrtf(x);
 }
 
+float _STDLIB(round)(float x) {
+    return roundf(x);
+}
+
 _STDLIB_END
