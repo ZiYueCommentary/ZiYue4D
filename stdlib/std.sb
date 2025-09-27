@@ -1,0 +1,22 @@
+; ZiYue4D standard library
+; v0.1 20250927
+
+/* math */
+Extern Sin#(x#)
+Extern Cos#(x#)
+Extern Round#(x#)
+
+/* stdio */
+Extern Print(str$)
+
+/* unsafe */
+Extern unsafe_ptr_to_int%(ptr@)
+
+/*****************************************/
+/*          INTERNAL FUNCTIONS           */
+/* Calling them are undefined behaviors! */
+/*****************************************/
+Extern create_string__$(raw@)
+Extern release_string__(str$)
+Extern int_to_string__$(raw%)
+Extern float_to_string__$(raw#)

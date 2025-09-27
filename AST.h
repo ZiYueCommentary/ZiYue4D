@@ -156,7 +156,7 @@ private:
     std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table, bool function_first = true);
     std::unique_ptr<ExprAST> parse_primary_expression(SymbolTable& symbol_table, bool function_first = true);
     std::unique_ptr<CallExprAST> parse_call_expression(const std::string callee, SymbolTable& symbol_table);
-    std::unique_ptr<FunctionSignatureAST> parse_function_signature();
+    std::unique_ptr<FunctionSignatureAST> parse_function_signature(bool is_extern = false);
     void parse_function_definition();
     int is_variable(SymbolTable& symbol_table, const std::string& name);
 

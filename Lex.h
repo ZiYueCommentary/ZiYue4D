@@ -41,4 +41,5 @@ public:
 
 private:
     std::unique_ptr<std::ifstream> file;
+    int last_char = ' ';
 };

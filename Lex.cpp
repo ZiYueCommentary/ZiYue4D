@@ -56,8 +56,6 @@ bool is_alpha(int c) {
 }
 
 int Lex::get_token() {
-    static int last_char = ' ';    
-
     if (last_char == '\n' || last_char == ':') { last_char = file->get(); return TOKEN_END_OF_STMT; }
 
     if (last_char == ';') {

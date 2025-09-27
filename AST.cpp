@@ -22,7 +22,7 @@ bool AST::parse()
                 continue;
             }
             if (token == TOKEN_EXTERN) {
-                auto function = parse_function_signature();
+                auto function = parse_function_signature(true);
                 extern_function_table.emplace(function->name, std::move(function));
                 continue;
             }
@@ -153,13 +153,13 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
     return lhs;
 }
 
-std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature() {
+std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_extern) {
     this->token = lex->get_token();
     if (token != TOKEN_IDENTIFIER) throw ast_exception("expecting function name");
     std::string name = std::move(lex->identifier);
     this->token = lex->get_token();
-    SymbolType return_value_type = SYMBOL_TYPE_INT;
-    if (token == TOKEN_TYPE_INT || token == TOKEN_TYPE_FLOAT || token == TOKEN_TYPE_STRING) {
+    SymbolType return_value_type = is_extern ? SYMBOL_TYPE_VOID : SYMBOL_TYPE_INT;
+    if (token == TOKEN_TYPE_INT || token == TOKEN_TYPE_FLOAT || token == TOKEN_TYPE_STRING || token == TOKEN_TYPE_POINTER) {
         return_value_type = token_to_type((Token)token);
         this->token = lex->get_token();
     }
@@ -173,7 +173,7 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature() {
         std::string arg_name = std::move(lex->identifier);
         this->token = lex->get_token();
         SymbolType type = SYMBOL_TYPE_INT;
-        if (token == TOKEN_TYPE_INT || token == TOKEN_TYPE_FLOAT || token == TOKEN_TYPE_STRING) {
+        if (token == TOKEN_TYPE_INT || token == TOKEN_TYPE_FLOAT || token == TOKEN_TYPE_STRING || token == TOKEN_TYPE_POINTER) {
             type = token_to_type((Token)token);
             this->token = lex->get_token();
         }
