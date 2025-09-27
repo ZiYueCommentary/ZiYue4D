@@ -1,38 +1,48 @@
 #include "AST.h"
+#include <iostream>
 #include <algorithm>
 
 const std::unordered_map<int, int> op_precedence = {
     {'=', 10},{'+', 20},{'-', 20},{'*', 30},{'/', 30}
 };
 
-void AST::parse()
+bool AST::parse()
 {
+    bool occur_errors = false;
     global_symbols.insert({ "main", SYMBOL_TYPE_FUNCTION });
     auto signature = std::make_unique<FunctionSignatureAST>("main", SYMBOL_TYPE_INT);
     auto function = std::make_unique<FunctionAST>(std::move(signature));
     while (true) {
-        //try {
-        this->token = lex->get_token();
-        if (token == TOKEN_EOF) break;
-        if (token == TOKEN_END_OF_STMT) continue;
-        if (token == TOKEN_FUNCTION) {
-            parse_function_definition();
-            continue;
+        try {
+            this->token = lex->get_token();
+            if (token == TOKEN_EOF) break;
+            if (token == TOKEN_END_OF_STMT) continue;
+            if (token == TOKEN_FUNCTION) {
+                parse_function_definition();
+                continue;
+            }
+            if (token == TOKEN_EXTERN) {
+                auto function = parse_function_signature();
+                extern_function_table.emplace(function->name, std::move(function));
+                continue;
+            }
+            std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(global_symbols));
+            function->body.push_back(std::move(parse_expression(std::move(lhs), global_symbols)));
         }
-        if (token == TOKEN_EXTERN) {
-            auto function = parse_function_signature();
-            extern_function_table.emplace(function->name, std::move(function));
-            continue;
+        catch (ast_exception e) {
+            std::cerr << e.what() << '\n';
+            while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT) { this->token = lex->get_token(); }
+            occur_errors = true;
         }
-        std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(global_symbols));
-        function->body.push_back(std::move(parse_expression(std::move(lhs), global_symbols)));
-        //}
-        //catch (ast_exception e) {
-        //    std::cerr << e.what() << '\n';
-        //    while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT) { this->token = lex->get_token(); }
-        //}
+        catch (lex_exception e) {
+            std::cerr << e.what() << '\n';
+            while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT) { this->token = lex->get_token(); }
+            occur_errors = true;
+        }
     }
     function_table.emplace("main", std::move(function));
+
+    return occur_errors;
 }
 
 std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table, bool function_first)

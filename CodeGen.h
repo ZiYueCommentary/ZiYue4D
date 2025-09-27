@@ -21,7 +21,7 @@ public:
         this->module = std::make_unique<llvm::Module>("ziyue4d", *context);
     }
     virtual ~CodeGen() {}
-    llvm::Value* generate_functions();
+    bool generate_functions();
 
 private:
     llvm::Value* visit(const std::unique_ptr<ExprAST>& expr);

@@ -91,6 +91,9 @@ int Lex::get_token() {
         while ((last_char = file->get()) != '\"') {
             if (last_char == '\n') throw lex_exception("mismatched quotes");
             string_value += last_char;
+            if (last_char == '\\') {
+                string_value += (last_char = file->get());
+            }
         }
         last_char = file->get();
         string_value = parse_string_literal(string_value);

@@ -150,7 +150,7 @@ class AST {
 public:
     AST(std::unique_ptr<Lex> lex) : lex(std::move(lex)) {}
 
-    void parse();
+    bool parse();
 
 private:
     std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table, bool function_first = true);

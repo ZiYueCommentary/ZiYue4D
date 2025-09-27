@@ -12,7 +12,7 @@
 #pragma comment(linker, "/export:??3@YAXPEAX_K@Z")
 #endif
 
-llvm::Value* CodeGen::generate_functions()
+bool CodeGen::generate_functions()
 {
     // register global variables & main entry
     for (const auto& symbol : semantic->ast->global_symbols) {
@@ -107,7 +107,8 @@ llvm::Value* CodeGen::generate_functions()
         semantic->scope = nullptr;
         scoped_symbol_table.pop_back();
     }
-    return nullptr;
+
+    return true;
 }
 
 // There is no type check since I trust my semantic analyzer

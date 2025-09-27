@@ -1,11 +1,12 @@
 
 print sddl(10)
 
-Function sddl%(/*     */a% = 1145)
-dl$ = "sd\ndl"
+Function sddl$(/*     */a% = 1145)
+dl$ = "sd\"dl"
 print dl$
 b = unsafe_ptr(&sddl)
-print b
+c$ = b
+print c
 return 1234
 end function
 

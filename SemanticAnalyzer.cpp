@@ -2,8 +2,9 @@
 #include <iostream>
 #include <algorithm>
 
-void SemanticAnalyzer::analyze()
+bool SemanticAnalyzer::analyze()
 {
+    bool occur_errors = false;
     for (auto& function : ast->function_table) {
         for (auto& arg : function.second->signature->arguments) {
             try {
@@ -13,6 +14,7 @@ void SemanticAnalyzer::analyze()
             }
             catch (semantic_exception e) {
                 std::cerr << "invalid syntax at " << readable_function_signature(function.second) << " signature: " << e.what() << '\n';
+                occur_errors = true;
             }
         }
         scope = &function.second->signature;
@@ -22,9 +24,11 @@ void SemanticAnalyzer::analyze()
             }
             catch (semantic_exception e) {
                 std::cerr << "invalid syntax at " << readable_function_signature(function.second) << " definition: " << e.what() << '\n';
+                occur_errors = true;
             }
         }
     }
+    return occur_errors;
 }
 
 bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) {

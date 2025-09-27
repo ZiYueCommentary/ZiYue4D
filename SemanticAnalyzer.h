@@ -46,7 +46,7 @@ public:
             this->ast->extern_function_table.insert({ func.getName().substr(9).str(), std::move(signature) });
         }
     }
-    void analyze();
+    bool analyze();
 
 private:
     bool can_convert_to(SymbolType old_type, SymbolType new_type);
