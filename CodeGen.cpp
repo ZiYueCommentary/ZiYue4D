@@ -74,6 +74,8 @@ llvm::Value* CodeGen::generate_functions()
             case SYMBOL_TYPE_STRING:
                 scoped_symbol_table.back().insert({ symbol.first, build_literal_string("") });
                 break;
+            case SYMBOL_TYPE_POINTER:
+                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)) });
             }
         }
         int index = 0;
@@ -125,6 +127,11 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(UnaryExprAST)) {
         auto& unary_expr = dynamic_cast<const UnaryExprAST&>(*expr);
+        if (unary_expr.op == '&') {
+            auto& ident = dynamic_cast<const VariableExprAST&>(*unary_expr.expr);
+            auto candidates = semantic->ast->function_table.equal_range(ident.name);
+            return module->getFunction(unique_function_name(candidates.first->second->signature));
+        }
         llvm::Value* value = visit(unary_expr.expr);
         SymbolType type = semantic->get_type(unary_expr.expr);
         if (type != SYMBOL_TYPE_INT && type != SYMBOL_TYPE_FLOAT) {
@@ -208,7 +215,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(CallExprAST)) {
         auto& call = dynamic_cast<const CallExprAST&>(*expr);
-        auto& func = semantic->seek_best_match_function(call);
+        auto& func = *semantic->seek_best_match_function(call);
         std::vector<llvm::Value*> built_arguments = {};
         for (int i = 0; i < func->arguments.size(); i++)
         {

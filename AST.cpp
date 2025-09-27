@@ -111,6 +111,16 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
         if (token != ')') throw ast_exception("expecting closing parenthesis");
         token = lex->get_token();
         break;
+    case '&':
+        token = lex->get_token();
+        if (token == TOKEN_IDENTIFIER) {
+            lhs = std::make_unique<UnaryExprAST>('&', std::move(std::make_unique<VariableExprAST>(std::move(lex->identifier))));
+            token = lex->get_token();
+        }
+        else {
+            throw ast_exception("expecting identifier");
+        }
+        break;
     case '-':
         token = lex->get_token();
         lhs = std::make_unique<UnaryExprAST>('-', std::move(parse_primary_expression(symbol_table, function_first)));

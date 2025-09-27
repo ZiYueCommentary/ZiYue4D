@@ -1,14 +1,12 @@
 
+print sddl(10)
 
-sddl# = 1+1;4 + 6 * (5 - (1))
-
-print 说的道理(10.7)
-
-
-Function 说的道理%(/*     */a% = 1145)
-/*dl$ = "sddl"
+Function sddl%(/*     */a% = 1145)
+dl$ = "sddl"
 print dl$
-return 1234*/
+b = unsafe_ptr(&sddl)
+print b
+return 1234
 end function
 
 ;sin(a)

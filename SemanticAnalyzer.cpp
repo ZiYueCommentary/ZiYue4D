@@ -46,7 +46,7 @@ bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) 
     }
 }
 
-const std::unique_ptr<FunctionSignatureAST>& SemanticAnalyzer::seek_best_match_function(const CallExprAST& expr) {
+const std::unique_ptr<FunctionSignatureAST>* SemanticAnalyzer::seek_best_match_function(const CallExprAST& expr) {
     auto candidates = ast->function_table.equal_range(expr.name);
     std::unique_ptr<FunctionSignatureAST>* current_candidate = nullptr;
     int current_mandatory = -1;
@@ -61,13 +61,13 @@ const std::unique_ptr<FunctionSignatureAST>& SemanticAnalyzer::seek_best_match_f
             current_candidate = &it->second->signature;
             current_mandatory = mandatory_args;
         }
-        if (expr.arguments.size() == mandatory_args + optional_args) return it->second->signature; // best match
+        if (expr.arguments.size() == mandatory_args + optional_args) return &it->second->signature; // best match
     }
     if (current_candidate == nullptr && ast->extern_function_table.contains(expr.name)) {
         auto& candidate = ast->extern_function_table.at(expr.name);
-        if (candidate->arguments.size() == expr.arguments.size()) return candidate;
+        if (candidate->arguments.size() == expr.arguments.size()) return &candidate;
     }
-    return *current_candidate;
+    return current_candidate;
 }
 
 SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
@@ -81,15 +81,18 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
     if (typeid(*expr) == typeid(StringExprAST)) {
         return SYMBOL_TYPE_STRING;
     }
-    if (typeid(*expr) == typeid(CallExprAST)) {
-        auto& call = dynamic_cast<CallExprAST&>(*expr);
-        auto& candidate = seek_best_match_function(call);
-        if (candidate != nullptr) return candidate->return_value_type;
-        throw semantic_exception("no function that matches the requirement");
-    }
     if (typeid(*expr) == typeid(UnaryExprAST)) {
         auto& call = dynamic_cast<UnaryExprAST&>(*expr);
         switch (call.op) {
+        case '&':
+        {
+            auto& ident = dynamic_cast<VariableExprAST&>(*call.expr);
+            // TODO
+            if (!ast->global_symbols.contains(ident.name)) throw semantic_exception("unknown identifier");
+            auto candidates = ast->function_table.equal_range(ident.name);
+            if (std::distance(candidates.first, candidates.second) > 1) std::cerr << "undefined behavior: retrieving function pointer which has overloading\n";
+            return SYMBOL_TYPE_POINTER;
+        }
         case '-':
         case TOKEN_LOGIC_NOT:
         {
@@ -102,6 +105,20 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         default:
             throw semantic_exception("invalid unary operator");
         }
+    }
+    if (typeid(*expr) == typeid(CallExprAST)) {
+        auto& call = dynamic_cast<CallExprAST&>(*expr);
+        auto candidate = seek_best_match_function(call);
+        if (candidate != nullptr) {
+            for (int i = 0; i < call.arguments.size(); i++)
+            {
+                if (!can_convert_to(get_type(call.arguments.at(i)), (*candidate)->arguments.at(i)->type)) {
+                    throw semantic_exception("mismatch argument type");
+                }
+            }
+            return (*candidate)->return_value_type;
+        }
+        throw semantic_exception("no function that matches the requirement");
     }
     if (typeid(*expr) == typeid(BinaryExprAST)) {
         auto& biexpr = dynamic_cast<BinaryExprAST&>(*expr);
@@ -191,6 +208,7 @@ std::string SemanticAnalyzer::readable_function_signature(const std::unique_ptr<
         case SYMBOL_TYPE_INT:result += '%'; break;
         case SYMBOL_TYPE_FLOAT:result += '#'; break;
         case SYMBOL_TYPE_STRING:result += '$'; break;
+        case SYMBOL_TYPE_POINTER:result += '@'; break;
         default: break;
         }
         result += ',';

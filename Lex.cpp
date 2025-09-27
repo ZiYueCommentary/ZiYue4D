@@ -6,7 +6,7 @@
 
 const std::unordered_set<char> operator_chars = {
     '+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|',
-    '^', '~', '?', ':', '.', ',', ';', '(', ')', '[', ']', '{', '}', '$', '#',
+    '^', '~', '?', ':', '.', ',', ';', '(', ')', '[', ']', '{', '}', '$', '#', '@',
     EOF, '\n', '\r', ' '
 };
 
@@ -43,7 +43,7 @@ int Lex::get_token() {
     if (last_char == '#') { last_char = file->get(); return TOKEN_TYPE_FLOAT; }
     if (last_char == '$') { last_char = file->get(); return TOKEN_TYPE_STRING; }
     if (last_char == '!') { last_char = file->get(); return TOKEN_LOGIC_NOT; }
-    if (last_char == '*') { last_char = file->get(); return TOKEN_TYPE_POINTER; }
+    if (last_char == '@') { last_char = file->get(); return TOKEN_TYPE_POINTER; }
 
     if (last_char == '\"') {
         string_value.clear();
