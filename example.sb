@@ -1,10 +1,12 @@
 print _sddl(10)
 
+ptr@ = unsafe_int_to_ptr(0)
+
 Function _sddl$(/*     */a% = 1145)
 dl$ = "sd\"dl"
 print dl$
 b = unsafe_ptr_to_int(&_sddl)
-c$ = b
+c% = unsafe_ptr_to_int(ptr)
 print c
 return 1234
 end function
