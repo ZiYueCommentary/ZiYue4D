@@ -2,7 +2,7 @@
 print sddl(10)
 
 Function sddl%(/*     */a% = 1145)
-dl$ = "sddl"
+dl$ = "sd\ndl"
 print dl$
 b = unsafe_ptr(&sddl)
 print b

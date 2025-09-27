@@ -10,6 +10,47 @@ const std::unordered_set<char> operator_chars = {
     EOF, '\n', '\r', ' '
 };
 
+std::string parse_string_literal(const std::string& raw) {
+    std::string result;
+    for (size_t i = 0; i < raw.length(); ++i) {
+        if (raw[i] == '\\' && i + 1 < raw.length()) {
+            char next = raw[++i];
+            switch (next) {
+            case 'n': result += '\n'; break;
+            case 't': result += '\t'; break;
+            case 'r': result += '\r'; break;
+            case '\\': result += '\\'; break;
+            case '"': result += '"'; break;
+            case '\'': result += '\''; break;
+            case 'b': result += '\b'; break;
+            case 'f': result += '\f'; break;
+            case 'x': {
+                if (i + 2 < raw.length()) {
+                    std::string hex = raw.substr(i + 1, 2);
+                    result += static_cast<char>(std::stoi(hex, nullptr, 16));
+                    i += 2;
+                }
+                break;
+            }
+            //case 'u': {
+            //    if (i + 4 < raw.length()) {
+            //        std::string hex = raw.substr(i + 1, 4);
+            //        uint32_t codepoint = std::stoi(hex, nullptr, 16);
+            //        result += encodeUTF8(codepoint);
+            //        i += 4;
+            //    }
+            //    break;
+            //}
+            default: result += next; break;
+            }
+        }
+        else {
+            result += raw[i];
+        }
+    }
+    return result;
+}
+
 bool is_alpha(int c) {
     return ((c & 0x80) != 0 || !operator_chars.contains(c)) && c != EOF;
 }
@@ -52,6 +93,7 @@ int Lex::get_token() {
             string_value += last_char;
         }
         last_char = file->get();
+        string_value = parse_string_literal(string_value);
         return TOKEN_STRING;
     }
 
