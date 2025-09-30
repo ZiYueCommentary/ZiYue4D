@@ -32,15 +32,15 @@ std::string parse_string_literal(const std::string& raw) {
                 }
                 break;
             }
-            //case 'u': {
-            //    if (i + 4 < raw.length()) {
-            //        std::string hex = raw.substr(i + 1, 4);
-            //        uint32_t codepoint = std::stoi(hex, nullptr, 16);
-            //        result += encodeUTF8(codepoint);
-            //        i += 4;
-            //    }
-            //    break;
-            //}
+                    //case 'u': {
+                    //    if (i + 4 < raw.length()) {
+                    //        std::string hex = raw.substr(i + 1, 4);
+                    //        uint32_t codepoint = std::stoi(hex, nullptr, 16);
+                    //        result += encodeUTF8(codepoint);
+                    //        i += 4;
+                    //    }
+                    //    break;
+                    //}
             default: result += next; break;
             }
         }
@@ -78,9 +78,29 @@ int Lex::get_token() {
     }
 
     while (isspace(last_char)) last_char = file->get();
-    if (last_char == '%') { last_char = file->get(); return TOKEN_TYPE_INT; }
+    if (last_char == '%') {
+        if ((last_char = file->get()) == '0' || last_char == '1') {
+            std::string bin_int = std::string(1, (char)last_char);
+            while ((last_char = file->get()) == '0' || last_char == '1') {
+                bin_int += (char)last_char;
+            }
+            int_value = std::stoi(bin_int.c_str(), nullptr, 2);
+            return TOKEN_INTEGER;
+        }
+        return TOKEN_TYPE_INT;
+    }
+    if (last_char == '$') {
+        if (isxdigit(last_char = file->get())) {
+            std::string hex_int = std::string(1, (char)last_char);
+            while (isxdigit(last_char = file->get())) {
+                hex_int += (char)last_char;
+            }
+            int_value = std::stoi(hex_int.c_str(), nullptr, 16);
+            return TOKEN_INTEGER;
+        }
+        return TOKEN_TYPE_STRING;
+    }
     if (last_char == '#') { last_char = file->get(); return TOKEN_TYPE_FLOAT; }
-    if (last_char == '$') { last_char = file->get(); return TOKEN_TYPE_STRING; }
     if (last_char == '!') { last_char = file->get(); return TOKEN_LOGIC_NOT; }
     if (last_char == '@') { last_char = file->get(); return TOKEN_TYPE_POINTER; }
 
