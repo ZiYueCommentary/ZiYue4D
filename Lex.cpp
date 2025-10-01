@@ -57,6 +57,7 @@ bool is_alpha(int c) {
 
 int Lex::get_token() {
     if (last_char == '\n' || last_char == ':') { last_char = file->get(); return TOKEN_END_OF_STMT; }
+    while (isspace(last_char)) last_char = file->get();
 
     if (last_char == ';') {
         do {
@@ -68,16 +69,19 @@ int Lex::get_token() {
     if (last_char == '/') {
         if ((last_char = file->get()) == '*') {
             do {
+                if (last_char == '*') {
+                    if ((last_char = file->get()) == '/') break;
+                }
                 last_char = file->get();
-            } while (last_char != EOF && !(last_char == '*' && (last_char = file->get()) == '/'));
-            last_char = file->get();
+            } while (last_char != EOF);
+            if (last_char != EOF) last_char = file->get();
+            if (last_char != EOF) return get_token();
         }
         else {
             return '/';
         }
     }
 
-    while (isspace(last_char)) last_char = file->get();
     if (last_char == '%') {
         if ((last_char = file->get()) == '0' || last_char == '1') {
             std::string bin_int = std::string(1, (char)last_char);
@@ -129,10 +133,10 @@ int Lex::get_token() {
             last_char = file->get();
         } while (isdigit(last_char) || last_char == '.' || last_char == '_');
         if (type == TOKEN_INTEGER) {
-            int_value = atoi(number.c_str());
+            int_value = std::atoi(number.c_str());
         }
         else {
-            float_value = strtof(number.c_str(), nullptr);
+            float_value = std::strtof(number.c_str(), nullptr);
         }
         return type;
     }
