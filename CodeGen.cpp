@@ -23,7 +23,7 @@ void CodeGen::optimize_string()
 
 bool CodeGen::generate_functions()
 {
-    // initalizing constants
+    // initializing constants
     for (auto& symbol : semantic->ast->constant_table) {
         if (semantic->ast->is_variable(semantic->ast->global_symbols, symbol.first) == SYMBOL_TYPE_STRING) {
             symbol.second = std::move(merge_literal_string_operations(std::move(symbol.second)));
@@ -470,7 +470,9 @@ void CodeGen::release_lifecycle_resources(bool is_function_return, llvm::Value* 
 
 llvm::Value* CodeGen::build_literal_string(const std::string& str)
 {
-    llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { builder->CreateGlobalStringPtr(str) });
+    static std::unordered_map<std::string, llvm::Constant*> global_string_ptrs = {};
+    if (!global_string_ptrs.contains(str)) global_string_ptrs.insert({ str, builder->CreateGlobalStringPtr(str) });
+    llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { global_string_ptrs.at(str) });
     lifecycles.top().values.insert(built_string);
     return built_string;
 }

@@ -207,7 +207,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         }
         auto range = ast->global_symbols.equal_range(var.name);
         for (auto it = range.first; it != range.second; ++it) {
-            if (is_variable_type(it->second) || it->second & SYMBOL_FLAG_CONSTANT) return it->second;
+            if (is_variable_type(it->second)) return it->second;
         }
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
