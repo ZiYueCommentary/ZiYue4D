@@ -11,8 +11,8 @@ int main() {
     if (analyzer.analyze()) return 1;
     std::cout << "Generating...\n";
     JIT codegen(std::make_unique<SemanticAnalyzer>(std::move(analyzer)));
+    codegen.optimize_string();
     codegen.generate_functions();
-    codegen.init();
     std::cout << "Executing...\n";
     codegen.init();
     std::cout << codegen.run();

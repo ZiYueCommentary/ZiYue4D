@@ -12,10 +12,45 @@
 #pragma comment(linker, "/export:??3@YAXPEAX_K@Z")
 #endif
 
+void CodeGen::optimize_string()
+{
+    for (auto& func : semantic->ast->function_table) {
+        for (auto& expr : func.second->body) {
+            expr = std::move(merge_literal_string_operations(std::move(expr)));
+        }
+    }
+}
+
 bool CodeGen::generate_functions()
 {
+    // initalizing constants
+    for (auto& symbol : semantic->ast->constant_table) {
+        if (semantic->ast->is_variable(semantic->ast->global_symbols, symbol.first) == SYMBOL_TYPE_STRING) {
+            symbol.second = std::move(merge_literal_string_operations(std::move(symbol.second)));
+            StringExprAST& str = dynamic_cast<StringExprAST&>(*symbol.second);
+            llvm::GlobalVariable* variable = new llvm::GlobalVariable(
+                *this->module,
+                llvm::PointerType::get(*context, 0),
+                false,
+                llvm::GlobalValue::ExternalLinkage,
+                llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
+                symbol.first
+            );
+            scoped_symbol_table.back().insert({ symbol.first, variable });
+            const auto& main = semantic->ast->function_table.equal_range("main").first->second;
+            main->body.insert(main->body.begin(), std::make_unique<BinaryExprAST>(
+                '=',
+                std::move(std::make_unique<VariableExprAST>(std::move(std::string(symbol.first)))),
+                std::move(symbol.second)));
+        }
+        else {
+            scoped_symbol_table.back().insert({ symbol.first, visit(symbol.second) });
+        }
+    }
+
     // register global variables & main entry
     for (const auto& symbol : semantic->ast->global_symbols) {
+        if (semantic->ast->constant_table.contains(symbol.first)) continue;
         switch (symbol.second) {
         case SYMBOL_TYPE_INT:
         {
@@ -27,7 +62,6 @@ bool CodeGen::generate_functions()
                 llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)),
                 symbol.first
             );
-            llvm::errs() << '\n';
             scoped_symbol_table.back().insert({ symbol.first, variable });
             break;
         }
@@ -41,7 +75,19 @@ bool CodeGen::generate_functions()
                 llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)),
                 symbol.first
             );
-            llvm::errs() << '\n';
+            scoped_symbol_table.back().insert({ symbol.first, variable });
+            break;
+        }
+        case SYMBOL_TYPE_STRING:
+        {
+            llvm::GlobalVariable* variable = new llvm::GlobalVariable(
+                *this->module,
+                llvm::PointerType::get(*context, 0),
+                false,
+                llvm::GlobalValue::ExternalLinkage,
+                llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
+                symbol.first
+            );
             scoped_symbol_table.back().insert({ symbol.first, variable });
             break;
         }
@@ -168,9 +214,9 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         case '*':
         case '/':
             if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
-                llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
-                llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
                 if (bi_expr.op == '+') {
+                    llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
+                    llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
                     llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
                     lifecycles.top().values.insert(new_string);
                     return new_string;
@@ -230,7 +276,23 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<const ReturnExprAST&>(*expr);
-        llvm::Value* return_value = cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type);
+        llvm::Value* return_value = nullptr;
+        if (ret.expr == nullptr) {
+            switch ((*semantic->scope)->return_value_type) {
+            case SYMBOL_TYPE_FLOAT:
+                return_value = llvm::ConstantFP::get(*context, llvm::APFloat(0.0f));
+                break;
+            case SYMBOL_TYPE_STRING:
+                return_value = build_literal_string("");
+                break;
+            default:
+                return_value = llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true));
+                break;
+            }
+        }
+        else {
+            return_value = cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type);
+        }
         release_lifecycle_resources(true, return_value);
         builder->CreateRet(return_value);
     }
@@ -379,6 +441,9 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name)
     {
         if (it->contains(name)) return it->at(name);
     }
+    if (semantic->ast->constant_table.contains(name) && semantic->ast->is_variable(semantic->ast->global_symbols, name) != SYMBOL_TYPE_STRING) { // constant
+        return scoped_symbol_table.front().at(name);
+    }
     if (scoped_symbol_table.front().contains(name)) { // global variable
         auto global_variable = llvm::cast<llvm::GlobalVariable>(scoped_symbol_table.front().at(name));
         return builder->CreateLoad(global_variable->getValueType(), global_variable);
@@ -408,6 +473,52 @@ llvm::Value* CodeGen::build_literal_string(const std::string& str)
     llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { builder->CreateGlobalStringPtr(str) });
     lifecycles.top().values.insert(built_string);
     return built_string;
+}
+
+std::unique_ptr<ExprAST> CodeGen::merge_literal_string_operations(std::unique_ptr<ExprAST> expr)
+{
+    if (typeid(*expr) == typeid(CallExprAST)) {
+        auto& call = dynamic_cast<CallExprAST&>(*expr);
+        for (auto& arg : call.arguments)
+        {
+            arg = merge_literal_string_operations(std::move(arg));
+        }
+    }
+    if (typeid(*expr) == typeid(BinaryExprAST)) {
+        auto& biexpr = dynamic_cast<BinaryExprAST&>(*expr);
+        biexpr.lhs = std::move(merge_literal_string_operations(std::move(biexpr.lhs)));
+        biexpr.rhs = std::move(merge_literal_string_operations(std::move(biexpr.rhs)));
+        if (typeid(*biexpr.lhs) == typeid(StringExprAST) || typeid(*biexpr.rhs) == typeid(StringExprAST)) {
+            if (is_literal_expression(*biexpr.lhs) && is_literal_expression(*biexpr.rhs)) {
+                std::string lhs_literal = literal_to_string(*biexpr.lhs);
+                std::string rhs_literal = literal_to_string(*biexpr.rhs);
+                return std::make_unique<StringExprAST>(std::move(lhs_literal + rhs_literal));
+            }
+        }
+    }
+    return expr;
+}
+
+bool CodeGen::is_literal_expression(const ExprAST& expr)
+{
+    const auto& ty = typeid(expr);
+    return ty == typeid(StringExprAST) || ty == typeid(IntegerExprAST) || ty == typeid(FloatExprAST);
+}
+
+std::string CodeGen::literal_to_string(const ExprAST& expr)
+{
+    if (typeid(expr) == typeid(StringExprAST)) {
+        auto& str = dynamic_cast<const StringExprAST&>(expr);
+        return str.string;
+    }
+    if (typeid(expr) == typeid(IntegerExprAST)) {
+        auto& integer = dynamic_cast<const IntegerExprAST&>(expr);
+        return std::to_string(integer.value);
+    }
+    if (typeid(expr) == typeid(FloatExprAST)) {
+        auto& flt = dynamic_cast<const FloatExprAST&>(expr);
+        return std::to_string(flt.value);
+    }
 }
 
 void JIT::init()

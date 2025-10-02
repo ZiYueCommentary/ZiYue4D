@@ -9,6 +9,8 @@ public:
     virtual ~ExprAST() {}
 };
 
+using ConstantTable = std::unordered_map<std::string, std::unique_ptr<ExprAST>>;
+
 struct FunctionArgument {
 public:
     const std::string name;
@@ -162,6 +164,7 @@ private:
 
     std::unique_ptr<Lex> lex;
     SymbolTable global_symbols;
+    ConstantTable constant_table;
     FunctionTable function_table;
     ExternFunctionTable extern_function_table;
     int token = 0;

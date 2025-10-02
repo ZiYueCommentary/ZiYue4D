@@ -25,6 +25,7 @@ private:
     const std::unique_ptr<FunctionSignatureAST>* seek_best_match_function(const CallExprAST& expr);
     SymbolType get_type(const std::unique_ptr<ExprAST>& expr);
     SymbolType llvm_type_to_symbol_type(llvm::Type* value);
+    bool is_constant_expression(const std::unique_ptr<ExprAST>& expr);
     std::string readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature);
     std::string readable_function_signature(const std::unique_ptr<FunctionAST>& signature);
 

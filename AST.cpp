@@ -49,6 +49,33 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
 {
     std::unique_ptr<ExprAST> lhs = nullptr;
     switch (token) {
+    case TOKEN_CONST:
+    {
+        if (&symbol_table != &global_symbols) throw ast_exception("constant cannot be defined in function");
+
+        do {
+            token = lex->get_token();
+            std::string identifier = std::move(lex->identifier);
+            if (is_variable(global_symbols, identifier)) throw ast_exception("duplicate constant definition");
+            Token type = TOKEN_TYPE_INT;
+            token = lex->get_token();
+            switch (token) {
+            case TOKEN_TYPE_FLOAT:
+            case TOKEN_TYPE_STRING:
+            case TOKEN_TYPE_POINTER:
+            case TOKEN_TYPE_INT:
+                type = (Token)token;
+                token = lex->get_token();
+            }
+
+            if (token != '=') throw ast_exception("missing constant value");
+            token = lex->get_token();
+            global_symbols.insert({ identifier, token_to_type(type) });
+            constant_table.emplace(identifier, std::move(parse_expression(parse_primary_expression(global_symbols, false), global_symbols, false)));
+            lhs = std::make_unique<VariableExprAST>(std::move(identifier));
+        } while (token == ',');
+        break;
+    }
     case TOKEN_IDENTIFIER:
     {
         std::string identifier = std::move(lex->identifier);
@@ -246,7 +273,7 @@ std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, Sym
         token = lex->get_token();
         std::unique_ptr<ExprAST> rhs = std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first));
 
-        while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != ')' &&
+        while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != ')'&& token != ',' &&
             op_precedence.at(op) < op_precedence.at(token)) {
             int next_op = token;
             token = lex->get_token();

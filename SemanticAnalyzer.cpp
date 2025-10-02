@@ -5,6 +5,22 @@
 bool SemanticAnalyzer::analyze()
 {
     bool occur_errors = false;
+    for (auto& constant : ast->constant_table) {
+        if (!is_constant_expression(constant.second)) {
+            std::cerr << "expression must be constant\n";
+            occur_errors = true;
+        }
+        try {
+            if (get_type(constant.second) != ast->is_variable(ast->global_symbols, constant.first)) {
+                std::cerr << "mismatch type at constant " << constant.first << " definition" << '\n';
+                occur_errors = true;
+            }
+        }
+        catch (semantic_exception e) {
+            std::cerr << "invalid syntax at constant " << constant.first << " definition: " << e.what() << '\n';
+            occur_errors = true;
+        }
+    }
     for (auto& function : ast->function_table) {
         for (auto& arg : function.second->signature->arguments) {
             try {
@@ -43,6 +59,7 @@ bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) 
     case SYMBOL_TYPE_FLOAT:
         if (new_type == SYMBOL_TYPE_INT) {
             std::cerr << "unsafe conversion: float to int may cause precision loss\n";
+            return true;
         }
         return new_type == SYMBOL_TYPE_STRING;
     default:
@@ -69,7 +86,14 @@ const std::unique_ptr<FunctionSignatureAST>* SemanticAnalyzer::seek_best_match_f
     }
     if (current_candidate == nullptr && ast->extern_function_table.contains(expr.name)) {
         auto& candidate = ast->extern_function_table.at(expr.name);
-        if (candidate->arguments.size() == expr.arguments.size()) return &candidate;
+        int mandatory_args = std::count_if(candidate->arguments.begin(),
+            candidate->arguments.end(),
+            [](const std::unique_ptr<FunctionArgument>& arg) {
+                return arg->default_value == nullptr;
+            });
+        if (expr.arguments.size() >= mandatory_args && expr.arguments.size() <= candidate->arguments.size()) {
+            return &candidate;
+        }
     }
     return current_candidate;
 }
@@ -91,7 +115,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         case '&':
         {
             auto& ident = dynamic_cast<VariableExprAST&>(*call.expr);
-            // TODO
+            // TODO variable
             if (!ast->global_symbols.contains(ident.name)) throw semantic_exception("unknown identifier");
             auto candidates = ast->function_table.equal_range(ident.name);
             if (std::distance(candidates.first, candidates.second) > 1) std::cerr << "undefined behavior: retrieving function pointer which has overloading\n";
@@ -129,6 +153,12 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         SymbolType lhs_type = get_type(biexpr.lhs);
         SymbolType rhs_type = get_type(biexpr.rhs);
         if (biexpr.op == '=') {
+            if (typeid(*biexpr.lhs) == typeid(VariableExprAST)) {
+                auto& var = dynamic_cast<VariableExprAST&>(*biexpr.lhs);
+                if (ast->constant_table.contains(var.name)) {
+                    throw semantic_exception("cannot realloc constant value");
+                }
+            }
             if (rhs_type != SYMBOL_TYPE_VOID) {
                 switch (lhs_type)
                 {
@@ -157,7 +187,10 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
             }
             throw semantic_exception("bad conversion");
         }
-        if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) return SYMBOL_TYPE_STRING;
+        if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
+            if (biexpr.op != '+') throw semantic_exception("invalid operation");
+            return SYMBOL_TYPE_STRING;
+        }
         if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) return SYMBOL_TYPE_FLOAT;
         return SYMBOL_TYPE_INT;
     }
@@ -174,7 +207,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         }
         auto range = ast->global_symbols.equal_range(var.name);
         for (auto it = range.first; it != range.second; ++it) {
-            if (is_variable_type(it->second)) return it->second;
+            if (is_variable_type(it->second) || it->second & SYMBOL_FLAG_CONSTANT) return it->second;
         }
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
@@ -200,6 +233,35 @@ SymbolType SemanticAnalyzer::llvm_type_to_symbol_type(llvm::Type* type)
     default:
         return SYMBOL_TYPE_POINTER;
     }
+}
+
+bool SemanticAnalyzer::is_constant_expression(const std::unique_ptr<ExprAST>& expr)
+{
+    if (typeid(*expr) == typeid(FloatExprAST) || typeid(*expr) == typeid(IntegerExprAST) || typeid(*expr) == typeid(StringExprAST)) {
+        return true;
+    }
+    if (typeid(*expr) == typeid(UnaryExprAST)) {
+        auto& call = dynamic_cast<UnaryExprAST&>(*expr);
+        switch (call.op) {
+        case '&':
+            return false;
+        case '-':
+        case TOKEN_LOGIC_NOT:
+            return is_constant_expression(call.expr);
+        }
+    }
+    if (typeid(*expr) == typeid(CallExprAST)) {
+        return false;
+    }
+    if (typeid(*expr) == typeid(BinaryExprAST)) {
+        auto& biexpr = dynamic_cast<BinaryExprAST&>(*expr);
+        return is_constant_expression(biexpr.lhs) && is_constant_expression(biexpr.rhs);
+    }
+    if (typeid(*expr) == typeid(VariableExprAST)) {
+        auto& var = dynamic_cast<VariableExprAST&>(*expr);
+        return ast->constant_table.contains(var.name);
+    }
+    return false;
 }
 
 std::string SemanticAnalyzer::readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature)

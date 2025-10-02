@@ -21,6 +21,7 @@ public:
         this->module = std::make_unique<llvm::Module>("ziyue4d", *context);
     }
     virtual ~CodeGen() {}
+    void optimize_string();
     bool generate_functions();
 
 private:
@@ -34,6 +35,9 @@ private:
     llvm::Value* find_variable_value(const std::string& name);
     void release_lifecycle_resources(bool is_function_return = false, llvm::Value* string_return_value = nullptr);
     llvm::Value* build_literal_string(const std::string& str);
+    std::unique_ptr<ExprAST> merge_literal_string_operations(std::unique_ptr<ExprAST> expr);
+    bool is_literal_expression(const ExprAST& expr);
+    std::string literal_to_string(const ExprAST& expr);
 
     std::unique_ptr<llvm::LLVMContext> context;
     std::unique_ptr<llvm::IRBuilder<>> builder;
