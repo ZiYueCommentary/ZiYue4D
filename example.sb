@@ -1,18 +1,12 @@
 
-const c$ = "1" + 1 + 5.5
+Global a$ = "1" + 1 + 5.5
 
-d$ = "1" + 3.14 + "sddl"
-p$ = "1" + 3.14 + "sddl"
+Local d$ = "1" + 3.14 + "sddl", d$ = "1" + 3.14 + "sddl"
 
-print p
 print d
-print "eof"
+print PI
 
 Function _sddl$(/*     */a$ = 1145)
-;dl$ = "sd\"dl"
-;print dl$
-;b = unsafe_ptr_to_int(&_sddl)
-;c% = unsafe_ptr_to_int(ptr)
 return Replace(a, "0", "2233")
 end function
 

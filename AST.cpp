@@ -12,6 +12,8 @@ bool AST::parse()
     global_symbols.insert({ "main", SYMBOL_TYPE_FUNCTION });
     auto signature = std::make_unique<FunctionSignatureAST>("main", SYMBOL_TYPE_INT);
     auto function = std::make_unique<FunctionAST>(std::move(signature));
+    function_table.emplace("main", std::move(function));
+    const auto& main = function_table.equal_range("main").first->second;
     while (true) {
         try {
             this->token = lex->get_token();
@@ -26,8 +28,8 @@ bool AST::parse()
                 extern_function_table.emplace(function->name, std::move(function));
                 continue;
             }
-            std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(global_symbols));
-            function->body.push_back(std::move(parse_expression(std::move(lhs), global_symbols)));
+            std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(main->signature->symbol_table));
+            main->body.push_back(std::move(parse_expression(std::move(lhs), main->signature->symbol_table)));
         }
         catch (ast_exception e) {
             std::cerr << e.what() << '\n';
@@ -40,7 +42,6 @@ bool AST::parse()
             occur_errors = true;
         }
     }
-    function_table.emplace("main", std::move(function));
 
     return occur_errors;
 }
@@ -49,9 +50,25 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
 {
     std::unique_ptr<ExprAST> lhs = nullptr;
     switch (token) {
+    case TOKEN_GLOBAL:
+        do {
+            token = lex->get_token();
+            if (is_variable(global_symbols, lex->identifier)) throw ast_exception("duplicate variable definition");
+            lhs = parse_expression(parse_primary_expression(global_symbols, function_first), global_symbols, function_first);
+        } while (token == ',');
+        break;
+    case TOKEN_LOCAL:
+        do {
+            token = lex->get_token();
+            if (is_variable(symbol_table, lex->identifier)) throw ast_exception("duplicate variable definition");
+            lhs = parse_expression(parse_primary_expression(symbol_table, function_first), symbol_table, function_first);
+        } while (token == ',');
+        break;
     case TOKEN_CONST:
     {
-        if (&symbol_table != &global_symbols) throw ast_exception("constant cannot be defined in function");
+        if (&symbol_table != &function_table.equal_range("main").first->second->signature->symbol_table) {
+            throw ast_exception("constant cannot be defined in function");
+        }
 
         do {
             token = lex->get_token();
@@ -121,12 +138,10 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
             }
             if (token == '(' || function_first) { // must be function call
                 lhs = parse_call_expression(std::move(identifier), symbol_table);
-                //token = lex->get_token();
                 return lhs;
             }
         }
 
-        //if (!op_precedence.contains(token) && token != '(' && token != ')') throw ast_exception("unknown operator");
         lhs = std::make_unique<VariableExprAST>(std::move(identifier));
         break;
     }
@@ -243,6 +258,8 @@ void AST::parse_function_definition() {
         if (token == TOKEN_EOF) throw ast_exception("expecting end function");
         if (token == TOKEN_FUNCTION) throw ast_exception("cannot define function in function");
         if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in function");
+        if (token == TOKEN_CONST) throw ast_exception("cannot define constant in function");
+        if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in function");
         if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_FUNCTION) { break; }
         if (token == TOKEN_END_OF_STMT) { this->token = lex->get_token(); continue; }
         std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(function->signature->symbol_table));
@@ -273,7 +290,7 @@ std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, Sym
         token = lex->get_token();
         std::unique_ptr<ExprAST> rhs = std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first));
 
-        while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != ')'&& token != ',' &&
+        while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != ')' && token != ',' &&
             op_precedence.at(op) < op_precedence.at(token)) {
             int next_op = token;
             token = lex->get_token();

@@ -16,6 +16,8 @@ enum Token {
     TOKEN_LOGIC_NOT,
     TOKEN_RETURN,
     TOKEN_CONST,
+    TOKEN_GLOBAL,
+    TOKEN_LOCAL,
     TOKEN_TYPE_INT,
     TOKEN_TYPE_FLOAT,
     TOKEN_TYPE_STRING,
@@ -38,5 +40,7 @@ const std::unordered_map<std::string, Token> tokens = {
     {"end", TOKEN_END},
     {"extern", TOKEN_EXTERN},
     {"return", TOKEN_RETURN},
-    {"const", TOKEN_CONST}
+    {"const", TOKEN_CONST},
+    {"local", TOKEN_LOCAL},
+    {"global", TOKEN_GLOBAL}
 };

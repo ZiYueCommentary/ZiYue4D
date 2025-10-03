@@ -10,8 +10,13 @@ class SemanticAnalyzer {
 public:
     SemanticAnalyzer(std::unique_ptr<AST> ast) : ast(std::move(ast)) {
         using namespace std;
-        AST std_ast(std::make_unique<Lex>("E:\\ZiYue4D\\out\\build\\x64-debug\\std.sb"));
+        AST std_ast(std::make_unique<Lex>("E:\\ZiYue4D\\stdlib\\std.sb"));
         if (std_ast.parse()) throw semantic_exception("invalid standard library");
+        for (auto& constant : std_ast.constant_table)
+        {
+            this->ast->global_symbols.insert({ constant.first, std_ast.global_symbols.equal_range(constant.first).first->second });
+            this->ast->constant_table.emplace(constant.first, std::move(constant.second));
+        }
         for (auto& std_func : std_ast.extern_function_table)
         {
             std_func.second->name = "_ziyue4d_"s + std_func.second->name;

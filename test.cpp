@@ -3,6 +3,7 @@
 #include <iostream>
 
 int main() {
+    std::system("chcp 65001");
     std::cout << "Compiling...\n";
     AST ast(std::make_unique<Lex>("E:\\ZiYue4D\\example.sb"));
     if (ast.parse()) return 1;
