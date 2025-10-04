@@ -1,16 +1,29 @@
 ; ZiYue4D standard library
 ; v0.1 20250927
 
+Const True% = 1
+Const False% = 0
+Const PI# = 3.14159265358979323846
+Const Infinity# = 1.0 / 0.0
+Const NaN# = 0.0 / 0.0
+
 /* math */
 Extern Sin#(x#)
 Extern Cos#(x#)
 Extern Round#(x#)
+
+/* string */
+Extern Concat$(a$, b$)
+Extern Replace$(str$, old$, new$)
+Extern String$(str$, repeat%)
 
 /* stdio */
 Extern Print(str$)
 
 /* unsafe */
 Extern unsafe_ptr_to_int%(ptr@)
+Extern unsafe_int_to_ptr@(ptr%)
+Extern unsafe_cstr@(str$)
 
 /*****************************************/
 /*          INTERNAL FUNCTIONS           */

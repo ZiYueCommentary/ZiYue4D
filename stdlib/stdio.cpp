@@ -3,6 +3,7 @@
 
 _STDLIB_BEGIN
 
+_ALWAYS_INLINE
 void _STDLIB(print)(ZStr str) {
     puts(str->c_str());
 }

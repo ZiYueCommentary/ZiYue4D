@@ -6,7 +6,7 @@ if(NOT CLANG_COMPILER)
     set(CLANG_COMPILER ${CMAKE_CXX_COMPILER})
 endif()
 
-file(GLOB STANDARD_LIBRARY_SOURCES "*.cpp")
+file(GLOB STANDARD_LIBRARY_SOURCES "math.cpp" "stdio.cpp" "string.cpp" "unsafe.cpp")
 
 foreach(SRC_FILE ${STANDARD_LIBRARY_SOURCES})
     get_filename_component(SRC_NAME ${SRC_FILE} NAME_WE)
