@@ -105,8 +105,65 @@ int Lex::get_token() {
         return TOKEN_TYPE_STRING;
     }
     if (last_char == '#') { last_char = file->get(); return TOKEN_TYPE_FLOAT; }
-    if (last_char == '!') { last_char = file->get(); return TOKEN_LOGIC_NOT; }
     if (last_char == '@') { last_char = file->get(); return TOKEN_TYPE_POINTER; }
+
+    if (last_char == '!') { 
+        last_char = file->get();
+        if (last_char == '=') {
+            last_char = file->get();
+            return TOKEN_NOT_EQUALS;
+        }
+        return TOKEN_LOGIC_NOT;
+    }
+    if (last_char == '<') {
+        last_char = file->get();
+        switch (last_char)
+        {
+        case '>':
+            last_char = file->get();
+            return TOKEN_NOT_EQUALS;
+        case '=':
+            last_char = file->get();
+            return TOKEN_LESS_THAN_OR_EQUALS;
+        default:
+            return TOKEN_LESS_THAN;
+        }
+    }
+    if (last_char == '>') {
+        last_char = file->get();
+        switch (last_char)
+        {
+        case '=':
+            last_char = file->get();
+            return TOKEN_GREATER_THAN_OR_EQUALS;
+        default:
+            return TOKEN_GREATER_THAN;
+        }
+    }
+    if (last_char == '=') {
+        last_char = file->get();
+        if (last_char == '=') {
+            last_char = file->get();
+            return TOKEN_EQUALS;
+        }
+        return '=';
+    }
+    if (last_char == '&') {
+        last_char = file->get();
+        if (last_char == '&') {
+            last_char = file->get();
+            return TOKEN_LOGIC_AND;
+        }
+        return TOKEN_BITWISE_AND;
+    }
+    if (last_char == '|') {
+        last_char = file->get();
+        if (last_char == '|') {
+            last_char = file->get();
+            return TOKEN_LOGIC_OR;
+        }
+        return TOKEN_BITWISE_OR;
+    }
 
     if (last_char == '\"') {
         string_value.clear();

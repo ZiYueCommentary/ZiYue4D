@@ -186,12 +186,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         }
         switch (unary_expr.op) {
         case TOKEN_LOGIC_NOT:
-            if (type == SYMBOL_TYPE_INT) {
-                return cast_value_to(builder->CreateICmpEQ(value, llvm::ConstantInt::get(value->getType(), 0)), SYMBOL_TYPE_INT);
-            }
-            else {
-                return cast_value_to(builder->CreateFCmpOEQ(value, llvm::ConstantFP::get(value->getType(), 0.0f)), SYMBOL_TYPE_INT);
-            }
+            return cast_value_to(builder->CreateICmpEQ(cast_value_to(value, SYMBOL_TYPE_INT), llvm::ConstantInt::get(value->getType(), 0)), SYMBOL_TYPE_INT);
         case '-':
             if (type == SYMBOL_TYPE_INT) {
                 return builder->CreateSub(llvm::ConstantInt::get(value->getType(), 0), value);
@@ -207,53 +202,85 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         llvm::Value* rhs = visit(bi_expr.rhs);
         SymbolType lhs_type = semantic->get_type(bi_expr.lhs);
         SymbolType rhs_type = semantic->get_type(bi_expr.rhs);
-        switch (bi_expr.op)
-        {
-        case '+':
-        case '-':
-        case '*':
-        case '/':
-            if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
-                if (bi_expr.op == '+') {
-                    llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
-                    llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
-                    llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
-                    lifecycles.top().values.insert(new_string);
-                    return new_string;
-                }
-                return nullptr;
-            }
-
-            if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) {
-                llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_FLOAT);
-                llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_FLOAT);
-                switch (bi_expr.op) {
-                case '+':
-                    return builder->CreateFAdd(new_lhs, new_rhs);
-                case '-':
-                    return builder->CreateFSub(new_lhs, new_rhs);
-                case '*':
-                    return builder->CreateFMul(new_lhs, new_rhs);
-                case '/':
-                    return builder->CreateFDiv(new_lhs, new_rhs);
-                }
-            }
-            switch (bi_expr.op) {
-            case '+':
-                return builder->CreateAdd(lhs, rhs);
-            case '-':
-                return builder->CreateSub(lhs, rhs);
-            case '*':
-                return builder->CreateMul(lhs, rhs);
-            case '/':
-                return builder->CreateSDiv(lhs, rhs);
-            }
-        case '=':
+        if (bi_expr.op == '=') {
             if (typeid(*bi_expr.lhs) == typeid(VariableExprAST)) {
                 auto& var = dynamic_cast<const VariableExprAST&>(*bi_expr.lhs);
                 update_variable_value(var.name, cast_value_to(rhs, semantic->get_type(bi_expr.lhs)));
             }
             return rhs;
+        }
+        if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
+            if (bi_expr.op == '+') {
+                llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
+                llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
+                llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
+                lifecycles.top().values.insert(new_string);
+                return new_string;
+            }
+            return nullptr;
+        }
+        if (semantic->is_bitwise_or_logic_operator(bi_expr.op)) {
+            llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_INT);
+            llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_INT);
+            switch (bi_expr.op) {
+            case TOKEN_LOGIC_AND:
+                return cast_value_to(builder->CreateICmpNE(builder->CreateAnd(new_lhs, new_rhs), llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0)), SYMBOL_TYPE_INT);
+            case TOKEN_LOGIC_OR:
+                return cast_value_to(builder->CreateICmpNE(builder->CreateOr(new_lhs, new_rhs), llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0)), SYMBOL_TYPE_INT);
+            case TOKEN_BITWISE_AND:
+                return builder->CreateAnd(new_lhs, new_rhs);
+            case TOKEN_BITWISE_OR:
+                return builder->CreateOr(new_lhs, new_rhs);
+            }
+            return nullptr;
+        }
+        if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) {
+            llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_FLOAT);
+            llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_FLOAT);
+            switch (bi_expr.op) {
+            case '+':
+                return builder->CreateFAdd(new_lhs, new_rhs);
+            case '-':
+                return builder->CreateFSub(new_lhs, new_rhs);
+            case '*':
+                return builder->CreateFMul(new_lhs, new_rhs);
+            case '/':
+                return builder->CreateFDiv(new_lhs, new_rhs);
+            case TOKEN_EQUALS:
+                return cast_value_to(builder->CreateFCmpOEQ(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+            case TOKEN_NOT_EQUALS:
+                return cast_value_to(builder->CreateFCmpONE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+            case TOKEN_LESS_THAN:
+                return cast_value_to(builder->CreateFCmpOLT(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+            case TOKEN_LESS_THAN_OR_EQUALS:
+                return cast_value_to(builder->CreateFCmpOLE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+            case TOKEN_GREATER_THAN:
+                return cast_value_to(builder->CreateFCmpOGT(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+            case TOKEN_GREATER_THAN_OR_EQUALS:
+                return cast_value_to(builder->CreateFCmpOGE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+            }
+        }
+        switch (bi_expr.op) {
+        case '+':
+            return builder->CreateAdd(lhs, rhs);
+        case '-':
+            return builder->CreateSub(lhs, rhs);
+        case '*':
+            return builder->CreateMul(lhs, rhs);
+        case '/':
+            return builder->CreateSDiv(lhs, rhs);
+        case TOKEN_EQUALS:
+            return cast_value_to(builder->CreateICmpEQ(lhs, rhs), SYMBOL_TYPE_INT);
+        case TOKEN_NOT_EQUALS:
+            return cast_value_to(builder->CreateICmpNE(lhs, rhs), SYMBOL_TYPE_INT);
+        case TOKEN_LESS_THAN:
+            return cast_value_to(builder->CreateICmpSLT(lhs, rhs), SYMBOL_TYPE_INT);
+        case TOKEN_LESS_THAN_OR_EQUALS:
+            return cast_value_to(builder->CreateICmpSLE(lhs, rhs), SYMBOL_TYPE_INT);
+        case TOKEN_GREATER_THAN:
+            return cast_value_to(builder->CreateICmpSGT(lhs, rhs), SYMBOL_TYPE_INT);
+        case TOKEN_GREATER_THAN_OR_EQUALS:
+            return cast_value_to(builder->CreateICmpSGE(lhs, rhs), SYMBOL_TYPE_INT);
         }
     }
     if (typeid(*expr) == typeid(VariableExprAST)) {
@@ -528,14 +555,9 @@ void JIT::init()
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
-    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
     auto jit = llvm::orc::LLJITBuilder().create();
     if (!jit) throw std::runtime_error("failed to initialize JIT");
     this->jit = std::move(*jit);
-    this->jit->getMainJITDylib().addGenerator(
-        llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-            this->jit->getDataLayout().getGlobalPrefix()))
-    );
     auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
     module->setTargetTriple(stdlib->get()->getTargetTriple());
     module->print(llvm::errs(), nullptr);

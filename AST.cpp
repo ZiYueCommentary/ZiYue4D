@@ -3,7 +3,9 @@
 #include <algorithm>
 
 const std::unordered_map<int, int> op_precedence = {
-    {'=', 10},{'+', 20},{'-', 20},{'*', 30},{'/', 30}
+    {'=', 10},
+    {TOKEN_NOT_EQUALS, 20},
+    {'+', 30},{'-', 30},{'*', 31},{'/', 31}
 };
 
 bool AST::parse()

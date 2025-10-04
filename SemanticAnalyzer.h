@@ -31,6 +31,8 @@ private:
     SymbolType get_type(const std::unique_ptr<ExprAST>& expr);
     SymbolType llvm_type_to_symbol_type(llvm::Type* value);
     bool is_constant_expression(const std::unique_ptr<ExprAST>& expr);
+    bool is_relational_operator(int token);
+    bool is_bitwise_or_logic_operator(int token);
     std::string readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature);
     std::string readable_function_signature(const std::unique_ptr<FunctionAST>& signature);
 

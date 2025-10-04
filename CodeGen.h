@@ -6,7 +6,6 @@
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/IR/IRBuilder.h>
 #pragma warning(pop)
-#include <stack>
 
 struct Lifecycle {
     bool is_function;

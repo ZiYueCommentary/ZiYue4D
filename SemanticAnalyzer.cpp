@@ -4,6 +4,7 @@
 
 bool SemanticAnalyzer::analyze()
 {
+    scope = &ast->function_table.equal_range("main").first->second->signature;
     bool occur_errors = false;
     for (auto& constant : ast->constant_table) {
         if (!is_constant_expression(constant.second)) {
@@ -191,7 +192,14 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
             if (biexpr.op != '+') throw semantic_exception("invalid operation");
             return SYMBOL_TYPE_STRING;
         }
-        if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) return SYMBOL_TYPE_FLOAT;
+        if ((lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT)) {
+            if (is_relational_operator(biexpr.op)) return SYMBOL_TYPE_INT;
+            if (is_bitwise_or_logic_operator(biexpr.op)) {
+                std::cerr << "unsafe conversion: float to int may cause precision loss\n";
+                return SYMBOL_TYPE_INT;
+            }
+            return SYMBOL_TYPE_FLOAT;
+        }
         return SYMBOL_TYPE_INT;
     }
     if (typeid(*expr) == typeid(VariableExprAST)) {
@@ -262,6 +270,16 @@ bool SemanticAnalyzer::is_constant_expression(const std::unique_ptr<ExprAST>& ex
         return ast->constant_table.contains(var.name);
     }
     return false;
+}
+
+bool SemanticAnalyzer::is_relational_operator(int token)
+{
+    return token == TOKEN_NOT_EQUALS || token == TOKEN_EQUALS || token == TOKEN_LESS_THAN || token == TOKEN_LESS_THAN_OR_EQUALS || token == TOKEN_GREATER_THAN || token == TOKEN_GREATER_THAN_OR_EQUALS;
+}
+
+bool SemanticAnalyzer::is_bitwise_or_logic_operator(int token)
+{
+    return token == TOKEN_BITWISE_AND || token == TOKEN_BITWISE_OR || token == TOKEN_LOGIC_OR || token == TOKEN_LOGIC_AND || token == TOKEN_LOGIC_NOT;
 }
 
 std::string SemanticAnalyzer::readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature)

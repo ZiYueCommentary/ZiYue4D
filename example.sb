@@ -1,13 +1,9 @@
 
-Global a$ = "1" + 1 + 5.5
+global b% = 5
 
-Local d$ = "1" + 3.14 + "sddl", d$ = "1" + 3.14 + "sddl"
-
-print d
-print PI
+print (b or 0)
+return 200
 
 Function _sddl$(/*     */a$ = 1145)
 return Replace(a, "0", "2233")
 end function
-
-;sin(a)
