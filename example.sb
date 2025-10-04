@@ -1,7 +1,7 @@
 
 global b% = 5
 
-print (b or 0)
+print (2 || 0)
 return 200
 
 Function _sddl$(/*     */a$ = 1145)

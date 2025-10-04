@@ -186,10 +186,10 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         }
         switch (unary_expr.op) {
         case TOKEN_LOGIC_NOT:
-            return cast_value_to(builder->CreateICmpEQ(cast_value_to(value, SYMBOL_TYPE_INT), llvm::ConstantInt::get(value->getType(), 0)), SYMBOL_TYPE_INT);
+            return cast_value_to(builder->CreateICmpEQ(cast_value_to(value, SYMBOL_TYPE_INT), builder->getInt32(0)), SYMBOL_TYPE_INT);
         case '-':
             if (type == SYMBOL_TYPE_INT) {
-                return builder->CreateSub(llvm::ConstantInt::get(value->getType(), 0), value);
+                return builder->CreateSub(builder->getInt32(0), value);
             }
             else {
                 return builder->CreateFSub(llvm::ConstantFP::get(value->getType(), 0.0f), value);
@@ -224,9 +224,17 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_INT);
             switch (bi_expr.op) {
             case TOKEN_LOGIC_AND:
-                return cast_value_to(builder->CreateICmpNE(builder->CreateAnd(new_lhs, new_rhs), llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0)), SYMBOL_TYPE_INT);
+            {
+                llvm::Value* bool_lhs = builder->CreateICmpNE(new_lhs, builder->getInt32(0));
+                llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
+                return cast_value_to(builder->CreateAnd(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
+            }
             case TOKEN_LOGIC_OR:
-                return cast_value_to(builder->CreateICmpNE(builder->CreateOr(new_lhs, new_rhs), llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0)), SYMBOL_TYPE_INT);
+            {
+                llvm::Value* bool_lhs = builder->CreateICmpNE(new_lhs, builder->getInt32(0));
+                llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
+                return cast_value_to(builder->CreateOr(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
+            }
             case TOKEN_BITWISE_AND:
                 return builder->CreateAnd(new_lhs, new_rhs);
             case TOKEN_BITWISE_OR:
