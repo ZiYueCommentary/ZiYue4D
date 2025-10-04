@@ -277,7 +277,7 @@ std::unique_ptr<CallExprAST> AST::parse_call_expression(std::string callee, Symb
         if (token == ',' || token == '(') this->token = lex->get_token();
         if (token == ')' || token == TOKEN_EOF || token == TOKEN_END_OF_STMT) { this->token = lex->get_token(); break; }
         std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(symbol_table, false));
-        arguments.push_back(std::move(parse_expression(std::move(lhs), symbol_table)));
+        arguments.push_back(std::move(parse_expression(std::move(lhs), symbol_table, false)));
     } while (token == ',');
     if (token == ')') this->token = lex->get_token();
     return std::make_unique<CallExprAST>(std::move(callee), std::move(arguments));
@@ -299,7 +299,7 @@ std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, Sym
             rhs = std::make_unique<BinaryExprAST>(next_op, std::move(rhs), parse_expression(std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first)), symbol_table, op == '=' ? false : function_first));
         }
 
-        lhs = std::make_unique<BinaryExprAST>(op, std::move(lhs), std::move(rhs));
+        lhs = std::make_unique<BinaryExprAST>(op == '=' ? (function_first ? '=' : TOKEN_EQUALS) : op, std::move(lhs), std::move(rhs));
     }
 }
 
