@@ -202,7 +202,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             if (bi_expr.op == '+') {
                 llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
                 llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
-                llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
+                llvm::Value* new_string = builder->CreateCall(module->getFunction("ziyue4d_concat"), { new_lhs, new_rhs });
                 lifecycles.back().values.insert(new_string);
                 return new_string;
             }
@@ -376,7 +376,7 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
         case SYMBOL_TYPE_POINTER:
         case SYMBOL_TYPE_STRING:
         {
-            llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { value });
+            llvm::Value* new_value = builder->CreateCall(module->getFunction("ziyue4d_int_to_string__"), { value });
             lifecycles.back().values.insert(new_value);
             return new_value;
         }
@@ -394,12 +394,12 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
         case SYMBOL_TYPE_POINTER:
         case SYMBOL_TYPE_STRING:
         {
-            llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { value });
+            llvm::Value* new_value = builder->CreateCall(module->getFunction("ziyue4d_float_to_string__"), { value });
             lifecycles.back().values.insert(new_value);
             return new_value;
         }
         case SYMBOL_TYPE_INT:
-            return builder->CreateFPToSI(builder->CreateCall(module->getFunction("_ziyue4d_round"), value), llvm::Type::getInt32Ty(*context));
+            return builder->CreateFPToSI(builder->CreateCall(module->getFunction("ziyue4d_round"), value), llvm::Type::getInt32Ty(*context));
         default:
             return value;
         }
@@ -458,7 +458,7 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
     if (signature->name == "main") return "main";
     if (cache.contains((void*)&signature)) return cache.at((void*)&signature); // what am i doing?
 
-    auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("_ziyue4d_") ? signature->name.substr(9) : signature->name);
+    auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("ziyue4d_") ? signature->name.substr(8) : signature->name);
     if (extern_func != semantic->ast->extern_function_table.end() && extern_func->second == signature) {
         cache.insert({ (void*)&signature, signature->name });
         return cache.at((void*)&signature);
@@ -525,7 +525,7 @@ void CodeGen::release_lifecycle_resources(bool is_function_return, llvm::Value* 
     {
         for (auto value : it->values) {
             if (value != return_value) {
-                builder->CreateCall(module->getFunction("_ziyue4d_release_string__"), { value });
+                builder->CreateCall(module->getFunction("ziyue4d_release_string__"), { value });
             }
         }
         if ((!is_function_return) || (is_function_return && it->is_function)) break;
@@ -536,7 +536,7 @@ llvm::Value* CodeGen::build_literal_string(const std::string& str)
 {
     static std::unordered_map<std::string, llvm::Constant*> global_string_ptrs = {};
     if (!global_string_ptrs.contains(str)) global_string_ptrs.insert({ str, builder->CreateGlobalStringPtr(str) });
-    llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { global_string_ptrs.at(str) });
+    llvm::Value* built_string = builder->CreateCall(module->getFunction("ziyue4d_create_string__"), { global_string_ptrs.at(str) });
     lifecycles.back().values.insert(built_string);
     return built_string;
 }

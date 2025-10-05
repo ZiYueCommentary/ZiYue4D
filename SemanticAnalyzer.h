@@ -19,7 +19,7 @@ public:
         }
         for (auto& std_func : std_ast.extern_function_table)
         {
-            std_func.second->name = "_ziyue4d_"s + std_func.second->name;
+            std_func.second->name = "ziyue4d_"s + std_func.second->name;
             this->ast->extern_function_table.emplace(std_func.first, std::move(std_func.second));
         }
     }
