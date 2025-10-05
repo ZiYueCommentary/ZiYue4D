@@ -31,7 +31,12 @@ enum Token {
     TOKEN_TYPE_INT,
     TOKEN_TYPE_FLOAT,
     TOKEN_TYPE_STRING,
-    TOKEN_TYPE_POINTER
+    TOKEN_TYPE_POINTER,
+    TOKEN_IF,
+    TOKEN_ELSE,
+    TOKEN_ELSE_IF,
+    TOKEN_THEN,
+    TOKEN_ENDIF
 };
 
 enum SymbolType {
@@ -56,4 +61,9 @@ const std::unordered_map<std::string, Token> tokens = {
     {"and", TOKEN_BITWISE_AND},
     {"or", TOKEN_BITWISE_OR},
     {"lor", TOKEN_LOGIC_OR},
+    {"if", TOKEN_IF},
+    {"else", TOKEN_ELSE},
+    {"elseif", TOKEN_ELSE_IF},
+    {"then", TOKEN_THEN},
+    {"endif", TOKEN_ENDIF}
 };

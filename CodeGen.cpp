@@ -107,30 +107,17 @@ bool CodeGen::generate_functions()
         llvm::Function* function = module->getFunction(unique_function_name(func.second->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
         scoped_symbol_table.push_back({});
-        lifecycles.push({ true, {} });
+        semantic->scoped_symbol_tables.push_back({});
+        lifecycles.push_back({ true, {} });
         builder->SetInsertPoint(block);
-        for (const auto& symbol : func.second->signature->symbol_table) {
-            switch (symbol.second) {
-            case SYMBOL_TYPE_INT:
-                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)) });
-                break;
-            case SYMBOL_TYPE_FLOAT:
-                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)) });
-                break;
-            case SYMBOL_TYPE_STRING:
-                scoped_symbol_table.back().insert({ symbol.first, build_literal_string("") });
-                break;
-            case SYMBOL_TYPE_POINTER:
-                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)) });
-            }
-        }
+        build_scoped_symbol_table(func.second->signature->symbol_table);
         int index = 0;
         for (const auto& arg : func.second->signature->arguments) {
             function->getArg(index)->setName(arg->name);
             scoped_symbol_table.back().insert_or_assign(arg->name, function->getArg(index));
             index++;
         }
-        semantic->scope = &func.second->signature;
+        semantic->scope_function = &func.second->signature;
         for (const auto& expr : func.second->body) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) {
                 llvm::errs() << "unreachable code\n";
@@ -149,9 +136,11 @@ bool CodeGen::generate_functions()
                 break;
             }
         }
-        llvm::verifyFunction(*function);
-        semantic->scope = nullptr;
+        lifecycles.pop_back();
+        llvm::verifyFunction(*function, &llvm::errs());
+        semantic->scope_function = nullptr;
         scoped_symbol_table.pop_back();
+        semantic->scoped_symbol_tables.pop_back();
     }
 
     return true;
@@ -214,7 +203,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
                 llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
                 llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
                 llvm::Value* new_string = builder->CreateCall(module->getFunction("_ziyue4d_concat"), { new_lhs, new_rhs });
-                lifecycles.top().values.insert(new_string);
+                lifecycles.back().values.insert(new_string);
                 return new_string;
             }
             return nullptr;
@@ -306,14 +295,14 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
                 func->arguments.at(i)->type));
         }
         llvm::Value* ret_val = builder->CreateCall(module->getFunction(unique_function_name(func)), built_arguments);
-        if (func->return_value_type == SYMBOL_TYPE_STRING) lifecycles.top().values.insert(ret_val);
+        if (func->return_value_type == SYMBOL_TYPE_STRING) lifecycles.back().values.insert(ret_val);
         return ret_val;
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<const ReturnExprAST&>(*expr);
         llvm::Value* return_value = nullptr;
         if (ret.expr == nullptr) {
-            switch ((*semantic->scope)->return_value_type) {
+            switch ((*semantic->scope_function)->return_value_type) {
             case SYMBOL_TYPE_FLOAT:
                 return_value = llvm::ConstantFP::get(*context, llvm::APFloat(0.0f));
                 break;
@@ -326,10 +315,55 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             }
         }
         else {
-            return_value = cast_value_to(visit(ret.expr), (*semantic->scope)->return_value_type);
+            return_value = cast_value_to(visit(ret.expr), (*semantic->scope_function)->return_value_type);
         }
         release_lifecycle_resources(true, return_value);
         builder->CreateRet(return_value);
+    }
+    if (typeid(*expr) == typeid(IfStatementAST)) {
+        auto& if_statement = dynamic_cast<const IfStatementAST&>(*expr);
+        llvm::Value* condition = builder->CreateICmpNE(visit(if_statement.condition), builder->getInt32(0));
+        llvm::Function* scope = module->getFunction(unique_function_name(*semantic->scope_function));
+        llvm::BasicBlock* statement_true_block = llvm::BasicBlock::Create(*context, "", scope);
+        llvm::BasicBlock* statement_false_block = llvm::BasicBlock::Create(*context, "", scope);
+        llvm::BasicBlock* post_if_statement = llvm::BasicBlock::Create(*context, "", scope);
+        builder->CreateCondBr(condition, statement_true_block, statement_false_block);
+        // statement true
+        semantic->scoped_symbol_tables.push_back({});
+        scoped_symbol_table.push_back({});
+        build_scoped_symbol_table(if_statement.statement_true_symbol_table);
+        builder->SetInsertPoint(statement_true_block);
+        lifecycles.push_back({ false, {} });
+        for (const auto& if_expr : if_statement.statement_true) {
+            if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
+            visit(if_expr);
+        }
+        if (builder->GetInsertBlock()->getTerminator() == nullptr) {
+            release_lifecycle_resources();
+            builder->CreateBr(post_if_statement);
+        }
+        lifecycles.pop_back();
+        scoped_symbol_table.pop_back();
+        semantic->scoped_symbol_tables.pop_back();
+        // statement false
+        semantic->scoped_symbol_tables.push_back({});
+        scoped_symbol_table.push_back({});
+        build_scoped_symbol_table(if_statement.statement_false_symbol_table);
+        builder->SetInsertPoint(statement_false_block);
+        lifecycles.push_back({ false, {} });
+        for (const auto& if_expr : if_statement.statement_false) {
+            if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
+            visit(if_expr);
+        }
+        if (builder->GetInsertBlock()->getTerminator() == nullptr) {
+            release_lifecycle_resources();
+            builder->CreateBr(post_if_statement);
+        }
+        lifecycles.pop_back();
+        scoped_symbol_table.pop_back();
+        semantic->scoped_symbol_tables.pop_back();
+
+        builder->SetInsertPoint(post_if_statement);
     }
     return nullptr;
 }
@@ -343,7 +377,7 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
         case SYMBOL_TYPE_STRING:
         {
             llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_int_to_string__"), { value });
-            lifecycles.top().values.insert(new_value);
+            lifecycles.back().values.insert(new_value);
             return new_value;
         }
         case SYMBOL_TYPE_FLOAT:
@@ -361,7 +395,7 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
         case SYMBOL_TYPE_STRING:
         {
             llvm::Value* new_value = builder->CreateCall(module->getFunction("_ziyue4d_float_to_string__"), { value });
-            lifecycles.top().values.insert(new_value);
+            lifecycles.back().values.insert(new_value);
             return new_value;
         }
         case SYMBOL_TYPE_INT:
@@ -457,7 +491,7 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
 
 void CodeGen::update_variable_value(const std::string& name, llvm::Value* value)
 {
-    for (auto it = scoped_symbol_table.end() - 1; it != scoped_symbol_table.begin(); it--)
+    for (auto it = scoped_symbol_table.rbegin(); it != scoped_symbol_table.rend(); it++)
     {
         if (it->contains(name)) {
             it->insert_or_assign(name, value);
@@ -472,7 +506,7 @@ void CodeGen::update_variable_value(const std::string& name, llvm::Value* value)
 
 llvm::Value* CodeGen::find_variable_value(const std::string& name)
 {
-    for (auto it = scoped_symbol_table.end() - 1; it != scoped_symbol_table.begin(); it--)
+    for (auto it = scoped_symbol_table.crbegin(); it != scoped_symbol_table.crend(); it++)
     {
         if (it->contains(name)) return it->at(name);
     }
@@ -487,19 +521,14 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name)
 
 void CodeGen::release_lifecycle_resources(bool is_function_return, llvm::Value* return_value)
 {
-    while (lifecycles.size() > 0) {
-        for (auto value : lifecycles.top().values) {
+    for (auto it = lifecycles.crbegin(); it != lifecycles.crend(); it++)
+    {
+        for (auto value : it->values) {
             if (value != return_value) {
                 builder->CreateCall(module->getFunction("_ziyue4d_release_string__"), { value });
             }
         }
-        if ((!is_function_return) || (is_function_return && lifecycles.top().is_function)) {
-            lifecycles.pop();
-            break;
-        }
-        else {
-            lifecycles.pop();
-        }
+        if ((!is_function_return) || (is_function_return && it->is_function)) break;
     }
 }
 
@@ -508,7 +537,7 @@ llvm::Value* CodeGen::build_literal_string(const std::string& str)
     static std::unordered_map<std::string, llvm::Constant*> global_string_ptrs = {};
     if (!global_string_ptrs.contains(str)) global_string_ptrs.insert({ str, builder->CreateGlobalStringPtr(str) });
     llvm::Value* built_string = builder->CreateCall(module->getFunction("_ziyue4d_create_string__"), { global_string_ptrs.at(str) });
-    lifecycles.top().values.insert(built_string);
+    lifecycles.back().values.insert(built_string);
     return built_string;
 }
 
@@ -555,6 +584,28 @@ std::string CodeGen::literal_to_string(const ExprAST& expr)
     if (typeid(expr) == typeid(FloatExprAST)) {
         auto& flt = dynamic_cast<const FloatExprAST&>(expr);
         return std::to_string(flt.value);
+    }
+}
+
+void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table)
+{
+    for (const auto& symbol : symbol_table) {
+        if (semantic->ast->is_variable(symbol_table, symbol.first)) {
+            semantic->scoped_symbol_tables.back().emplace(symbol.first, symbol.second);
+            switch (symbol.second) {
+            case SYMBOL_TYPE_INT:
+                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)) });
+                break;
+            case SYMBOL_TYPE_FLOAT:
+                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)) });
+                break;
+            case SYMBOL_TYPE_STRING:
+                scoped_symbol_table.back().insert({ symbol.first, build_literal_string("") });
+                break;
+            case SYMBOL_TYPE_POINTER:
+                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)) });
+            }
+        }
     }
 }
 

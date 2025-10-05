@@ -191,6 +191,9 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
         }
         lhs = std::make_unique<ReturnExprAST>(std::move(parse_expression(std::move(parse_primary_expression(symbol_table, false)), symbol_table, false)));
         break;
+    case TOKEN_IF:
+        lhs = parse_if_statement(symbol_table);
+        break;
     default:
         throw ast_exception("expecting primary expression");
     }
@@ -270,6 +273,59 @@ void AST::parse_function_definition() {
     function_table.emplace(function->signature->name, std::move(function));
 }
 
+std::unique_ptr<IfStatementAST> AST::parse_if_statement(SymbolTable& symbol_table)
+{
+    this->token = lex->get_token();
+    std::unique_ptr<ExprAST> condition = parse_expression(parse_primary_expression(symbol_table, false), symbol_table, false);
+    if (this->token == TOKEN_THEN) this->token = lex->get_token();
+    std::unique_ptr<IfStatementAST> statement = std::make_unique<IfStatementAST>(std::move(condition));
+    if (this->token != TOKEN_END_OF_STMT) {
+        statement->statement_true.push_back(parse_expression(parse_primary_expression(statement->statement_true_symbol_table), statement->statement_true_symbol_table));
+        if (this->token == TOKEN_ELSE) {
+            this->token = lex->get_token();
+            statement->statement_false.push_back(parse_expression(parse_primary_expression(statement->statement_false_symbol_table), statement->statement_false_symbol_table));
+        }
+        else if (this->token == TOKEN_ELSE_IF) {
+            statement->statement_false.push_back(parse_if_statement(statement->statement_false_symbol_table));
+        }
+        return statement;
+    }
+    do {
+        if (token == TOKEN_EOF) throw ast_exception("expecting endif");
+        if (token == TOKEN_FUNCTION) throw ast_exception("cannot define function in if statement");
+        if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in if statement");
+        if (token == TOKEN_CONST) throw ast_exception("cannot define constant in if statement");
+        if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in if statement");
+        if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_IF) { break; }
+        if (token == TOKEN_END_OF_STMT) { this->token = lex->get_token(); continue; }
+        statement->statement_true.push_back(parse_expression(parse_primary_expression(statement->statement_true_symbol_table), statement->statement_true_symbol_table));
+    } while (this->token != TOKEN_ELSE && this->token != TOKEN_ELSE_IF && this->token != TOKEN_ENDIF);
+    if (this->token == TOKEN_ELSE_IF) {
+        statement->statement_false.push_back(parse_if_statement(statement->statement_false_symbol_table));
+    }
+    else {
+        if (this->token == TOKEN_ELSE) {
+            this->token = lex->get_token();
+            do {
+                if (token == TOKEN_EOF) throw ast_exception("expecting endif");
+                if (token == TOKEN_FUNCTION) throw ast_exception("cannot define function in if statement");
+                if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in if statement");
+                if (token == TOKEN_CONST) throw ast_exception("cannot define constant in if statement");
+                if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in if statement");
+                if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_IF) { break; }
+                if (token == TOKEN_END_OF_STMT) { this->token = lex->get_token(); continue; }
+                statement->statement_false.push_back(parse_expression(parse_primary_expression(statement->statement_false_symbol_table), statement->statement_false_symbol_table));
+            } while (this->token != TOKEN_ELSE && this->token != TOKEN_ELSE_IF && this->token != TOKEN_ENDIF);
+        }
+
+        if (this->token != TOKEN_ENDIF) {
+            if (this->token != TOKEN_END || ((this->token = lex->get_token()) != TOKEN_IF)) throw ast_exception("expecting endif");
+        }
+        this->token = lex->get_token();
+    }
+    return statement;
+}
+
 std::unique_ptr<CallExprAST> AST::parse_call_expression(std::string callee, SymbolTable& symbol_table) {
     std::vector<std::unique_ptr<ExprAST>> arguments = {};
     if (token == ')') return std::make_unique<CallExprAST>(std::move(callee), std::move(arguments));
@@ -287,23 +343,24 @@ std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, Sym
 {
     while (true) {
         int op = token;
-        if (token == TOKEN_EOF || token == TOKEN_END_OF_STMT || token == ')' || token == ',') return lhs;
+        if (token == TOKEN_EOF || token == TOKEN_END_OF_STMT || token == TOKEN_THEN || token == TOKEN_ELSE || token == TOKEN_ELSE_IF || token == ')' || token == ',') return lhs;
 
         token = lex->get_token();
         std::unique_ptr<ExprAST> rhs = std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first));
 
-        while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != ')' && token != ',' &&
-            op_precedence.at(op) < op_precedence.at(token)) {
-            int next_op = token;
-            token = lex->get_token();
-            rhs = std::make_unique<BinaryExprAST>(next_op, std::move(rhs), parse_expression(std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first)), symbol_table, op == '=' ? false : function_first));
+        while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT && token != TOKEN_THEN && token != TOKEN_ELSE && token != TOKEN_ELSE_IF && token != ')' && token != ',') {
+            if (op_precedence.at(op) < op_precedence.at(token)) {
+                int next_op = token;
+                token = lex->get_token();
+                rhs = std::make_unique<BinaryExprAST>(next_op, std::move(rhs), parse_expression(std::move(parse_primary_expression(symbol_table, op == '=' ? false : function_first)), symbol_table, op == '=' ? false : function_first));
+            }
         }
 
         lhs = std::make_unique<BinaryExprAST>(op == '=' ? (function_first ? '=' : TOKEN_EQUALS) : op, std::move(lhs), std::move(rhs));
     }
 }
 
-int AST::is_variable(SymbolTable& symbol_table, const std::string& name) {
+int AST::is_variable(const SymbolTable& symbol_table, const std::string& name) {
     if (symbol_table.contains(name)) {
         auto range = symbol_table.equal_range(name);
         for (auto it = range.first; it != range.second; ++it) {

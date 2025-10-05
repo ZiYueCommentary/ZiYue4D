@@ -4,9 +4,11 @@
 
 bool SemanticAnalyzer::analyze()
 {
-    scope = &ast->function_table.equal_range("main").first->second->signature;
+    scope_function = &ast->function_table.equal_range("main").first->second->signature;
     bool occur_errors = false;
+    scoped_symbol_tables.push_back({});
     for (auto& constant : ast->constant_table) {
+        scoped_symbol_tables.back().emplace(constant.first, (SymbolType)ast->is_variable(ast->global_symbols, constant.first));
         if (!is_constant_expression(constant.second)) {
             std::cerr << "expression must be constant\n";
             occur_errors = true;
@@ -23,6 +25,13 @@ bool SemanticAnalyzer::analyze()
         }
     }
     for (auto& function : ast->function_table) {
+        scope_function = &function.second->signature;
+        scoped_symbol_tables.push_back({});
+        const auto& symbol_table = function.second->signature->symbol_table;
+        for (auto it = symbol_table.begin(); it != symbol_table.end(); ++it) {
+            if (is_variable_type(it->second)) scoped_symbol_tables.back().emplace(it->first, it->second);
+        }
+
         for (auto& arg : function.second->signature->arguments) {
             try {
                 if (arg->default_value != nullptr && !can_convert_to(get_type(arg->default_value), arg->type)) {
@@ -34,7 +43,6 @@ bool SemanticAnalyzer::analyze()
                 occur_errors = true;
             }
         }
-        scope = &function.second->signature;
         for (auto& expr : function.second->body) {
             try {
                 get_type(expr);
@@ -44,6 +52,7 @@ bool SemanticAnalyzer::analyze()
                 occur_errors = true;
             }
         }
+        scoped_symbol_tables.pop_back();
     }
     return occur_errors;
 }
@@ -204,11 +213,9 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(VariableExprAST)) {
         auto& var = dynamic_cast<VariableExprAST&>(*expr);
-        if ((*scope)->symbol_table.contains(var.name)) {
-            auto range = (*scope)->symbol_table.equal_range(var.name);
-            for (auto it = range.first; it != range.second; ++it) {
-                if (is_variable_type(it->second)) return it->second;
-            }
+        for (auto it = scoped_symbol_tables.crbegin(); it != scoped_symbol_tables.crend(); it++)
+        {
+            if (it->contains(var.name)) return it->at(var.name);
         }
         if (!ast->global_symbols.contains(var.name)) {
             throw semantic_exception("unknown variable");
@@ -220,10 +227,41 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         auto& ret = dynamic_cast<ReturnExprAST&>(*expr);
-        if (ret.expr == nullptr) return (*scope)->return_value_type;
+        if (ret.expr == nullptr) return (*scope_function)->return_value_type;
         SymbolType type = get_type(ret.expr);
-        if (!can_convert_to(type, (*scope)->return_value_type)) throw semantic_exception("mismatched return value type");
+        if (!can_convert_to(type, (*scope_function)->return_value_type)) throw semantic_exception("mismatched return value type");
         return type;
+    }
+    if (typeid(*expr) == typeid(IfStatementAST)) {
+        auto& if_statement = dynamic_cast<IfStatementAST&>(*expr);
+        if (!can_convert_to(get_type(if_statement.condition), SYMBOL_TYPE_INT)) throw semantic_exception("if condition must be integer");
+        // statement true
+        {
+            scoped_symbol_tables.push_back({});
+            const auto& symbol_table = if_statement.statement_true_symbol_table;
+            for (auto it = symbol_table.begin(); it != symbol_table.end(); ++it) {
+                if (is_variable_type(it->second)) scoped_symbol_tables.back().emplace(it->first, it->second);
+            }
+            for (auto& true_expr : if_statement.statement_true)
+            {
+                get_type(true_expr);
+            }
+            scoped_symbol_tables.pop_back();
+        }
+        // statement false
+        {
+            scoped_symbol_tables.push_back({});
+            const auto& symbol_table = if_statement.statement_false_symbol_table;
+            for (auto it = symbol_table.begin(); it != symbol_table.end(); ++it) {
+                if (is_variable_type(it->second)) scoped_symbol_tables.back().emplace(it->first, it->second);
+            }
+            for (auto& false_expr : if_statement.statement_false)
+            {
+                get_type(false_expr);
+            }
+            scoped_symbol_tables.pop_back();
+        }
+        return SYMBOL_TYPE_VOID;
     }
     throw semantic_exception("unknown expression");
 }

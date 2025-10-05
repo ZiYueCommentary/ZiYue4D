@@ -4,7 +4,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <set>
+#include <map>
 
 class SemanticAnalyzer {
 public:
@@ -37,7 +37,8 @@ private:
     std::string readable_function_signature(const std::unique_ptr<FunctionAST>& signature);
 
     std::unique_ptr<AST> ast;
-    std::unique_ptr<FunctionSignatureAST>* scope = nullptr;
+    std::unique_ptr<FunctionSignatureAST>* scope_function = nullptr;
+    std::vector<std::unordered_map<std::string, SymbolType>> scoped_symbol_tables;
 
     friend class CodeGen;
 };

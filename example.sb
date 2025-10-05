@@ -1,9 +1,18 @@
+global a% = 0
 
-global b% = 5
+local c$ = "sddl"
 
-print (2 || 0)
+if a != 0 then 
+	local b% = 2
+	print(b)
+else
+	if true then
+		print(2)
+		return 0
+		;local c% = "1" + 3
+	else 
+		print (3)
+	endif
+endif
+
 return 200
-
-Function _sddl$(/*     */a$ = 1145)
-return Replace(a, "0", "2233")
-end function

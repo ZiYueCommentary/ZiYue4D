@@ -145,6 +145,21 @@ public:
     friend class CodeGen;
 };
 
+class IfStatementAST : public ExprAST {
+public:
+    IfStatementAST(std::unique_ptr<ExprAST> condition) : condition(std::move(condition)) {
+    }
+
+    std::unique_ptr<ExprAST> condition;
+    std::vector<std::unique_ptr<ExprAST>> statement_true;
+    std::vector<std::unique_ptr<ExprAST>> statement_false;
+    SymbolTable statement_true_symbol_table;
+    SymbolTable statement_false_symbol_table;
+
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
+
 using FunctionTable = std::unordered_multimap<std::string, std::unique_ptr<FunctionAST>>;
 using ExternFunctionTable = std::unordered_map<std::string, std::unique_ptr<FunctionSignatureAST>>;
 
@@ -160,7 +175,8 @@ private:
     std::unique_ptr<CallExprAST> parse_call_expression(const std::string callee, SymbolTable& symbol_table);
     std::unique_ptr<FunctionSignatureAST> parse_function_signature(bool is_extern = false);
     void parse_function_definition();
-    int is_variable(SymbolTable& symbol_table, const std::string& name);
+    std::unique_ptr<IfStatementAST> parse_if_statement(SymbolTable& symbol_table);
+    int is_variable(const SymbolTable& symbol_table, const std::string& name);
 
     std::unique_ptr<Lex> lex;
     SymbolTable global_symbols;

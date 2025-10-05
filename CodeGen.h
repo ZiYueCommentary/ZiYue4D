@@ -37,12 +37,13 @@ private:
     std::unique_ptr<ExprAST> merge_literal_string_operations(std::unique_ptr<ExprAST> expr);
     bool is_literal_expression(const ExprAST& expr);
     std::string literal_to_string(const ExprAST& expr);
+    void build_scoped_symbol_table(const SymbolTable& symbol_table);
 
     std::unique_ptr<llvm::LLVMContext> context;
     std::unique_ptr<llvm::IRBuilder<>> builder;
     std::unique_ptr<llvm::Module> module;
     std::vector<std::unordered_map<std::string, llvm::Value*>> scoped_symbol_table = { {} };
-    std::stack<Lifecycle> lifecycles;
+    std::vector<Lifecycle> lifecycles;
     std::unique_ptr<SemanticAnalyzer> semantic;
 
     friend class JIT;
