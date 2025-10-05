@@ -8,10 +8,4 @@
 #define _CONSTRUCTOR __attribute__((constructor))
 #define _ALWAYS_INLINE [[clang::always_inline]]
 
-#ifdef _WIN64
-#define INT int64_t
-#else
-#define INT int32_t
-#endif
-
 using ZStr = const std::string*;

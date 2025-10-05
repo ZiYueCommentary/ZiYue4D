@@ -10,6 +10,7 @@
 #pragma comment(linker, "/export:??_U@YAPEAX_K@Z")
 #pragma comment(linker, "/export:??_V@YAXPEAX@Z")
 #pragma comment(linker, "/export:??3@YAXPEAX_K@Z")
+#pragma comment(linker, "/export:?_Facet_Register@std@@YAXPEAV_Facet_base@1@@Z")
 #endif
 
 void CodeGen::optimize_string()
