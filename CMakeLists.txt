@@ -10,7 +10,7 @@ endif()
 
 project ("ZiYue4D")
 
-add_executable (ZiYue4D "CLI11.hpp" "test.cpp" "Token.h" "Lex.h" "Lex.cpp" "exceptions.h" "AST.h" "AST.cpp" "SemanticAnalyzer.h" "SemanticAnalyzer.cpp" "CodeGen.h" "CodeGen.cpp" )
+add_executable (ZiYue4D "CLI11.hpp" "main.cpp" "Token.h" "Lex.h" "Lex.cpp" "exceptions.h" "AST.h" "AST.cpp" "SemanticAnalyzer.h" "SemanticAnalyzer.cpp" "CodeGen.h" "CodeGen.cpp" )
 
 find_package(LLVM REQUIRED CONFIG)
 
@@ -19,8 +19,8 @@ include_directories(${LLVM_INCLUDE_DIRS})
 
 llvm_map_components_to_libnames(llvm_libs
   native
-  orcjit
-  executionengine
+  #orcjit
+  #executionengine
   target
   x86codegen
   asmparser

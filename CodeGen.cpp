@@ -22,7 +22,7 @@ void CodeGen::optimize_string()
     }
 }
 
-bool CodeGen::generate_functions()
+bool CodeGen::generate()
 {
     // initializing constants
     for (auto& symbol : semantic->ast->constant_table) {
@@ -612,26 +612,35 @@ void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table)
 
 void JIT::init()
 {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter();
-    llvm::InitializeNativeTargetAsmParser();
-    auto jit = llvm::orc::LLJITBuilder().create();
-    if (!jit) throw std::runtime_error("failed to initialize JIT");
-    this->jit = std::move(*jit);
-    auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
-    module->setTargetTriple(stdlib->get()->getTargetTriple());
-    module->print(llvm::errs(), nullptr);
-    auto std_module = llvm::orc::ThreadSafeModule(std::move(*stdlib), std::make_unique<llvm::LLVMContext>());
-    auto program_module = llvm::orc::ThreadSafeModule(std::move(module), std::make_unique<llvm::LLVMContext>());
-    this->jit->addIRModule(std::move(std_module));
-    this->jit->addIRModule(std::move(program_module));
+    //llvm::InitializeNativeTarget();
+    //llvm::InitializeNativeTargetAsmPrinter();
+    //llvm::InitializeNativeTargetAsmParser();
+    //auto jit = llvm::orc::LLJITBuilder().create();
+    //if (!jit) throw std::runtime_error("failed to initialize JIT");
+    //this->jit = std::move(*jit);
+    //auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
+    //module->setTargetTriple(stdlib->get()->getTargetTriple());
+    //module->print(llvm::errs(), nullptr);
+    //auto std_module = llvm::orc::ThreadSafeModule(std::move(*stdlib), std::make_unique<llvm::LLVMContext>());
+    //auto program_module = llvm::orc::ThreadSafeModule(std::move(module), std::make_unique<llvm::LLVMContext>());
+    //this->jit->addIRModule(std::move(std_module));
+    //this->jit->addIRModule(std::move(program_module));
 }
 
 int JIT::run()
 {
-    jit->initialize(jit->getMainJITDylib());
-    auto sym = jit->lookup("main");
-    auto main = sym->toPtr<int (*)()>();
-    int result = main();
-    return result;
+    //jit->initialize(jit->getMainJITDylib());
+    //auto sym = jit->lookup("main");
+    //auto main = sym->toPtr<int (*)()>();
+    //int result = main();
+    //return result;
+    return 0;
+}
+
+std::error_code Compiler::write_file(const std::string& file)
+{
+    std::error_code err;
+    llvm::raw_fd_ostream ofstream{ file, err };
+    module->print(ofstream, nullptr);
+    return err;
 }

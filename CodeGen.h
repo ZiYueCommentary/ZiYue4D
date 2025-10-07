@@ -21,7 +21,7 @@ public:
     }
     virtual ~CodeGen() {}
     void optimize_string();
-    bool generate_functions();
+    bool generate();
 
 private:
     llvm::Value* visit(const std::unique_ptr<ExprAST>& expr);
@@ -47,6 +47,7 @@ private:
     std::unique_ptr<SemanticAnalyzer> semantic;
 
     friend class JIT;
+    friend class Compiler;
 };
 
 class JIT : public CodeGen {
@@ -57,4 +58,10 @@ public:
 
 private:
     std::unique_ptr<llvm::orc::LLJIT> jit;
+};
+
+class Compiler : public CodeGen {
+public:
+    Compiler(std::unique_ptr<SemanticAnalyzer> semantic) : CodeGen(std::move(semantic)) {}
+    std::error_code write_file(const std::string& file);
 };
