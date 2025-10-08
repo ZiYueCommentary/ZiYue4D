@@ -8,9 +8,9 @@
 
 class SemanticAnalyzer {
 public:
-    SemanticAnalyzer(std::unique_ptr<AST> ast) : ast(std::move(ast)) {
+    SemanticAnalyzer(std::unique_ptr<AST> ast, const std::string& std) : ast(std::move(ast)) {
         using namespace std;
-        AST std_ast(std::make_unique<Lex>("E:\\ZiYue4D\\stdlib\\std.sb"));
+        AST std_ast(std::make_unique<Lex>(std));
         if (std_ast.parse()) throw semantic_exception("invalid standard library");
         for (auto& constant : std_ast.constant_table)
         {
