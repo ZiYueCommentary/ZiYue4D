@@ -98,11 +98,11 @@ ZStr _STDLIB(float_to_string__)(float raw) {
 }
 
 _ALWAYS_INLINE
-ZStr _STDLIB(concat)(ZStr str, ZStr b) {
+ZStr _STDLIB(Concat)(ZStr str, ZStr b) {
     return new std::string(*str + *b);
 }
 
-ZStr _STDLIB(replace)(ZStr str, ZStr pattern, ZStr newpat) {
+ZStr _STDLIB(Replace)(ZStr str, ZStr pattern, ZStr newpat) {
     std::string* result = new std::string();
     result->reserve(str->size());
 
@@ -119,13 +119,13 @@ ZStr _STDLIB(replace)(ZStr str, ZStr pattern, ZStr newpat) {
     return result;
 }
 
-ZStr _STDLIB(string)(ZStr str, int n) {
+ZStr _STDLIB(String)(ZStr str, int n) {
     std::string* result = new std::string();
     while (n-- > 0) result->append(*str);
     return result;
 }
 
-int _STDLIB(len)(ZStr str) {
+int _STDLIB(Len)(ZStr str) {
     int utf8Len = 0;
     for (int i = 0; i < str->size();) {
         utf8Len++;
@@ -134,7 +134,7 @@ int _STDLIB(len)(ZStr str) {
     return utf8Len;
 }
 
-ZStr _STDLIB(substr)(ZStr str, int start, int length) {
+ZStr _STDLIB(Substr)(ZStr str, int start, int length) {
     int utf8Index = 0;
     int bytesStart = str->size();
     int bytesLength = str->size();
@@ -153,24 +153,24 @@ ZStr _STDLIB(substr)(ZStr str, int start, int length) {
 }
 
 _ALWAYS_INLINE
-ZStr _STDLIB(left)(ZStr str, int n) {
-    return _STDLIB(substr)(str, 0, n);
+ZStr _STDLIB(Left)(ZStr str, int n) {
+    return _STDLIB(Substr)(str, 0, n);
 }
 
 _ALWAYS_INLINE
-ZStr _STDLIB(right)(ZStr str, int n) {
-    n = _STDLIB(len)(str); if (n < 0) n = 0;
-    return _STDLIB(substr)(str, n, str->size());
+ZStr _STDLIB(Right)(ZStr str, int n) {
+    n = _STDLIB(Len)(str); if (n < 0) n = 0;
+    return _STDLIB(Substr)(str, n, str->size());
 }
 
 _ALWAYS_INLINE
-ZStr _STDLIB(mid)(ZStr str, int start, int count) {
+ZStr _STDLIB(Mid)(ZStr str, int start, int count) {
     if (start > str->size()) start = str->size();
-    if (count >= 0) return _STDLIB(substr)(str, start, count);
-    return _STDLIB(substr)(str, start, str->size());
+    if (count >= 0) return _STDLIB(Substr)(str, start, count);
+    return _STDLIB(Substr)(str, start, str->size());
 }
 
-ZStr _STDLIB(converttoutf8)(ZStr str) {
+ZStr _STDLIB(ConvertToUTF8)(ZStr str) {
     UINT nLen = MultiByteToWideChar(GetACP(), NULL, str->c_str(), -1, NULL, NULL);
     WCHAR* wszBuffer = new WCHAR[nLen + 1];
     nLen = MultiByteToWideChar(GetACP(), NULL, str->c_str(), -1, wszBuffer, nLen);
@@ -187,7 +187,7 @@ ZStr _STDLIB(converttoutf8)(ZStr str) {
     return converted;
 }
 
-ZStr _STDLIB(converttoansi)(ZStr str) {
+ZStr _STDLIB(ConvertToANSI)(ZStr str) {
     UINT nLen = MultiByteToWideChar(CP_UTF8, NULL, str->c_str(), -1, NULL, NULL);
     WCHAR* wszBuffer = new WCHAR[nLen + 1];
     nLen = MultiByteToWideChar(CP_UTF8, NULL, str->c_str(), -1, wszBuffer, nLen);
@@ -204,7 +204,7 @@ ZStr _STDLIB(converttoansi)(ZStr str) {
     return converted;
 }
 
-bool _STDLIB(isvalidutf8string)(ZStr str) {
+bool _STDLIB(IsValidUTF8String)(ZStr str) {
     for (size_t i = 0; i < str->size();) {
         int counts = measure_codepoint(str->at(i));
         if (counts > 4) return false;
@@ -217,7 +217,7 @@ bool _STDLIB(isvalidutf8string)(ZStr str) {
     return true;
 }
 
-int _STDLIB(instr)(ZStr str, ZStr in, int from) {
+int _STDLIB(Instr)(ZStr str, ZStr in, int from) {
     from--;
     int utf8Index = 0;
     int bytesFrom = -1;
@@ -243,19 +243,19 @@ int _STDLIB(instr)(ZStr str, ZStr in, int from) {
     return result < 0 ? 0 : result + 1;
 }
 
-ZStr _STDLIB(upper)(ZStr str) {
+ZStr _STDLIB(Upper)(ZStr str) {
     std::string* result = new std::string();
     for (int i = 0; i < str->size(); ++i) result->push_back(std::toupper(str->at(i)));
     return result;
 }
 
-ZStr _STDLIB(lower)(ZStr str) {
+ZStr _STDLIB(Lower)(ZStr str) {
     std::string* result = new std::string();
     for (int i = 0; i < str->size(); ++i) result->push_back(std::tolower(str->at(i)));
     return result;
 }
 
-ZStr _STDLIB(trim)(ZStr str) {
+ZStr _STDLIB(Trim)(ZStr str) {
     size_t start = 0;
     size_t end = str->size();
 
@@ -265,41 +265,41 @@ ZStr _STDLIB(trim)(ZStr str) {
     return new std::string(str->substr(start, end - start));
 }
 
-ZStr _STDLIB(lset)(ZStr str, int n) {
+ZStr _STDLIB(LSet)(ZStr str, int n) {
     if (str->size() > n) return new std::string(str->substr(0, n));
     std::string* result = new std::string(*str);
     while (result->size() < n) result->push_back(' ');
     return result;
 }
 
-ZStr _STDLIB(rset)(ZStr str, int n) {
+ZStr _STDLIB(RSet)(ZStr str, int n) {
     if (str->size() > n) return new std::string(str->substr(str->size() - n));
     std::string* result = new std::string(*str);
     while (result->size() < n) result->insert(result->begin(), ' ');
     return result;
 }
 
-ZStr _STDLIB(chr)(int value) {
+ZStr _STDLIB(Chr)(int value) {
     return new std::string(1, (char)value);
 }
 
-ZStr _STDLIB(hex)(int value) {
+ZStr _STDLIB(Hex)(int value) {
     static char buff[33];
     _itoa_s(value, buff, 16);
     return new std::string(buff);
 }
 
-ZStr _STDLIB(bin)(int value) {
+ZStr _STDLIB(Bin)(int value) {
     static char buff[33];
     _itoa_s(value, buff, 2);
     return new std::string(buff);
 }
 
-int _STDLIB(asc)(ZStr str) {
+int _STDLIB(Asc)(ZStr str) {
     return str->size() ? str->at(0) & 255 : -1;
 }
 
-ZStr _STDLIB(highprecisionfloatstring)(float value) {
+ZStr _STDLIB(HighPrecisionFloatString)(float value) {
     std::ostringstream stream;
     stream << std::setprecision(20) << value;
     return new std::string(stream.str());

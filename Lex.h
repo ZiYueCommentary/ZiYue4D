@@ -27,6 +27,7 @@ constexpr SymbolType token_to_type(Token token) {
 class Lex {
 public:
     std::string identifier = "";
+    std::string case_identifier = "";
     int int_value = 0;
     std::string string_value = "";
     float float_value = .0f;

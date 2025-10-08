@@ -200,7 +200,11 @@ int Lex::get_token() {
 
     if (is_alpha(last_char)) {
         identifier = tolower(last_char);
-        while (is_alpha(last_char = file->get()) || isdigit(last_char)) identifier += tolower(last_char);
+        case_identifier = last_char;
+        while (is_alpha(last_char = file->get()) || isdigit(last_char)) { 
+            identifier += tolower(last_char);
+            case_identifier += last_char;
+        }
         if (tokens.contains(identifier)) return tokens.at(identifier);
         return TOKEN_IDENTIFIER;
     }

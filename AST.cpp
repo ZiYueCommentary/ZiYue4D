@@ -27,7 +27,6 @@ bool AST::parse()
             }
             if (token == TOKEN_EXTERN) {
                 auto function = parse_function_signature(true);
-                extern_function_table.emplace(function->name, std::move(function));
                 continue;
             }
             std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(main->signature->symbol_table));
@@ -203,7 +202,8 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(SymbolTable& symbol_table
 std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_extern) {
     this->token = lex->get_token();
     if (token != TOKEN_IDENTIFIER) throw ast_exception("expecting function name");
-    std::string name = std::move(lex->identifier);
+    std::string name = std::move(is_extern ? lex->case_identifier : lex->identifier);
+    std::string non_case_name = is_extern ? std::move(lex->identifier) : name;
     this->token = lex->get_token();
     SymbolType return_value_type = is_extern ? SYMBOL_TYPE_VOID : SYMBOL_TYPE_INT;
     if (token == TOKEN_TYPE_INT || token == TOKEN_TYPE_FLOAT || token == TOKEN_TYPE_STRING || token == TOKEN_TYPE_POINTER) {
@@ -237,7 +237,12 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_exte
         function->arguments.push_back(std::make_unique<FunctionArgument>(std::move(arg_name), type, std::move(default_value)));
     } while (token == ',');
     if (token != ')') throw ast_exception("expecting closing parenthesis");
-    global_symbols.insert({ name, SYMBOL_TYPE_FUNCTION });
+    global_symbols.insert({ non_case_name, SYMBOL_TYPE_FUNCTION });
+    if (is_extern) {
+        if (extern_function_table.contains(name)) throw ast_exception("duplicate extern function");
+        extern_function_table.emplace(non_case_name, std::move(function));
+        return nullptr;
+    }
 
     // looking for duplicate signatures...
     auto defined = function_table.equal_range(function->name);

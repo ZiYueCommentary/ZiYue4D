@@ -6,27 +6,27 @@
 _STDLIB_BEGIN
 
 _ALWAYS_INLINE
-float _STDLIB(sin)(float x) {
+float _STDLIB(Sin)(float x) {
     return sinf(x);
 }
 
 _ALWAYS_INLINE
-float _STDLIB(cos)(float x) {
+float _STDLIB(Cos)(float x) {
     return cosf(x);
 }
 
 _ALWAYS_INLINE
-float _STDLIB(tan)(float x) {
+float _STDLIB(Tan)(float x) {
     return tanf(x);
 }
 
 _ALWAYS_INLINE
-float _STDLIB(sqr)(float x) {
+float _STDLIB(Sqr)(float x) {
     return sqrtf(x);
 }
 
 _ALWAYS_INLINE
-float _STDLIB(round)(float x) {
+float _STDLIB(Round)(float x) {
     return roundf(x);
 }
 

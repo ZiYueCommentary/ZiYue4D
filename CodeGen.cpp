@@ -400,7 +400,7 @@ llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
             return new_value;
         }
         case SYMBOL_TYPE_INT:
-            return builder->CreateFPToSI(builder->CreateCall(module->getFunction("ziyue4d_round"), value), llvm::Type::getInt32Ty(*context));
+            return builder->CreateFPToSI(builder->CreateCall(module->getFunction("ziyue4d_Round"), value), llvm::Type::getInt32Ty(*context));
         default:
             return value;
         }
@@ -459,7 +459,7 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
     if (signature->name == "main") return "main";
     if (cache.contains((void*)&signature)) return cache.at((void*)&signature); // what am i doing?
 
-    auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("ziyue4d_") ? signature->name.substr(8) : signature->name);
+    auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("ziyue4d_") ? to_lower_string(signature->name.substr(8)) : to_lower_string(signature->name));
     if (extern_func != semantic->ast->extern_function_table.end() && extern_func->second == signature) {
         cache.insert({ (void*)&signature, signature->name });
         return cache.at((void*)&signature);
@@ -610,6 +610,17 @@ void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table)
     }
 }
 
+std::string CodeGen::to_lower_string(const std::string& str)
+{
+    std::string result{};
+    result.reserve(str.length());
+    for (size_t i = 0; i < str.length(); i++)
+    {
+        result.push_back(std::tolower(str.at(i)));
+    }
+    return result;
+}
+
 void JIT::init()
 {
     //llvm::InitializeNativeTarget();
@@ -637,10 +648,11 @@ int JIT::run()
     return 0;
 }
 
-std::error_code Compiler::write_file(const std::string& file)
+std::error_code Compiler::write_file(const std::string& file, bool dump_module)
 {
     std::error_code err;
     llvm::raw_fd_ostream ofstream{ file, err };
     module->print(ofstream, nullptr);
+    if (dump_module) module->print(llvm::outs(), nullptr);
     return err;
 }

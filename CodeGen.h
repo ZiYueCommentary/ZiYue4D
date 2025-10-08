@@ -38,6 +38,7 @@ private:
     bool is_literal_expression(const ExprAST& expr);
     std::string literal_to_string(const ExprAST& expr);
     void build_scoped_symbol_table(const SymbolTable& symbol_table);
+    std::string to_lower_string(const std::string& str);
 
     std::unique_ptr<llvm::LLVMContext> context;
     std::unique_ptr<llvm::IRBuilder<>> builder;
@@ -63,5 +64,5 @@ private:
 class Compiler : public CodeGen {
 public:
     Compiler(std::unique_ptr<SemanticAnalyzer> semantic) : CodeGen(std::move(semantic)) {}
-    std::error_code write_file(const std::string& file);
+    std::error_code write_file(const std::string& file, bool dump_module);
 };
