@@ -198,8 +198,9 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
             throw semantic_exception("bad conversion");
         }
         if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
-            if (biexpr.op != '+') throw semantic_exception("invalid operation");
-            return SYMBOL_TYPE_STRING;
+            if (biexpr.op == '+') return SYMBOL_TYPE_STRING;
+            if (biexpr.op == TOKEN_EQUALS) return SYMBOL_TYPE_INT;
+            throw semantic_exception("invalid operation");
         }
         if ((lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT)) {
             if (is_relational_operator(biexpr.op)) return SYMBOL_TYPE_INT;
@@ -264,21 +265,6 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr)
         return SYMBOL_TYPE_VOID;
     }
     throw semantic_exception("unknown expression");
-}
-
-SymbolType SemanticAnalyzer::llvm_type_to_symbol_type(llvm::Type* type)
-{
-    switch (type->getTypeID())
-    {
-    case llvm::Type::IntegerTyID:
-        return SYMBOL_TYPE_INT;
-    case llvm::Type::FloatTyID:
-        return SYMBOL_TYPE_FLOAT;
-    case llvm::Type::VoidTyID:
-        return SYMBOL_TYPE_VOID;
-    default:
-        return SYMBOL_TYPE_POINTER;
-    }
 }
 
 bool SemanticAnalyzer::is_constant_expression(const std::unique_ptr<ExprAST>& expr)

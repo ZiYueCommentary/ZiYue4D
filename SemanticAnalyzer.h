@@ -1,9 +1,6 @@
 #pragma once
 
 #include "AST.h"
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/Bitcode/BitcodeReader.h>
-#include <llvm/Support/MemoryBuffer.h>
 #include <map>
 
 class SemanticAnalyzer {
@@ -29,7 +26,6 @@ private:
     bool can_convert_to(SymbolType old_type, SymbolType new_type);
     const std::unique_ptr<FunctionSignatureAST>* seek_best_match_function(const CallExprAST& expr);
     SymbolType get_type(const std::unique_ptr<ExprAST>& expr);
-    SymbolType llvm_type_to_symbol_type(llvm::Type* value);
     bool is_constant_expression(const std::unique_ptr<ExprAST>& expr);
     bool is_relational_operator(int token);
     bool is_bitwise_or_logic_operator(int token);

@@ -200,12 +200,15 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             return rhs;
         }
         if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
+            llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
+            llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
             if (bi_expr.op == '+') {
-                llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
-                llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
-                llvm::Value* new_string = builder->CreateCall(module->getFunction("ziyue4d_concat"), { new_lhs, new_rhs });
+                llvm::Value* new_string = builder->CreateCall(module->getFunction("ziyue4d_Concat"), { new_lhs, new_rhs });
                 lifecycles.back().values.insert(new_string);
                 return new_string;
+            }
+            if (bi_expr.op == TOKEN_EQUALS) {
+                return builder->CreateCall(module->getFunction("ziyue4d_StringEquals"), { new_lhs, new_rhs });
             }
             return nullptr;
         }
