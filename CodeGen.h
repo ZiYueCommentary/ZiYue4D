@@ -19,7 +19,7 @@ public:
         this->builder = std::make_unique<llvm::IRBuilder<>>(*context);
         this->module = std::make_unique<llvm::Module>("ziyue4d", *context);
     }
-    virtual ~CodeGen() {}
+    virtual ~CodeGen() = default;
     void optimize_string();
     bool generate();
 
@@ -27,12 +27,12 @@ private:
     llvm::Value* visit(const std::unique_ptr<ExprAST>& expr);
     llvm::Value* cast_value_to(llvm::Value* value, SymbolType type);
     llvm::FunctionType* create_function_type(const std::unique_ptr<FunctionSignatureAST>& signature);
-    llvm::Type* token_to_type(Token token);
-    llvm::Type* symbol_type_to_type(SymbolType type);
+    [[nodiscard]] llvm::Type* token_to_type(Token token) const;
+    [[nodiscard]] llvm::Type* symbol_type_to_type(SymbolType type) const;
     std::string unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature);
     void update_variable_value(const std::string& name, llvm::Value* value);
     llvm::Value* find_variable_value(const std::string& name);
-    void release_lifecycle_resources(bool is_function_return = false, llvm::Value* string_return_value = nullptr);
+    void release_lifecycle_resources(bool is_function_return = false, const llvm::Value* string_return_value = nullptr);
     llvm::Value* build_literal_string(const std::string& str);
     std::unique_ptr<ExprAST> merge_literal_string_operations(std::unique_ptr<ExprAST> expr);
     bool is_literal_expression(const ExprAST& expr);
@@ -47,22 +47,11 @@ private:
     std::vector<Lifecycle> lifecycles;
     std::unique_ptr<SemanticAnalyzer> semantic;
 
-    friend class JIT;
     friend class Compiler;
-};
-
-class JIT : public CodeGen {
-public:
-    JIT(std::unique_ptr<SemanticAnalyzer> semantic) : CodeGen(std::move(semantic)) {}
-    void init();
-    int run();
-
-private:
-    std::unique_ptr<llvm::orc::LLJIT> jit;
 };
 
 class Compiler : public CodeGen {
 public:
     Compiler(std::unique_ptr<SemanticAnalyzer> semantic) : CodeGen(std::move(semantic)) {}
-    std::error_code write_file(const std::string& file, bool dump_module);
+    std::error_code write_file(const std::string& file);
 };

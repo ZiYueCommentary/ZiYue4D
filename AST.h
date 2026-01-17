@@ -6,19 +6,18 @@ using SymbolTable = std::unordered_multimap<std::string, SymbolType>;
 
 class ExprAST {
 public:
-    virtual ~ExprAST() {}
+    virtual ~ExprAST() = default;
 };
 
 using ConstantTable = std::unordered_map<std::string, std::unique_ptr<ExprAST>>;
 
 struct FunctionArgument {
-public:
     const std::string name;
     const SymbolType type;
     const std::unique_ptr<ExprAST> default_value;
 
     FunctionArgument(std::string&& name, SymbolType type, std::unique_ptr<ExprAST> default_value) : name(std::move(name)), type(type), default_value(std::move(default_value)) {}
-    ~FunctionArgument() {}
+    ~FunctionArgument() = default;
 };
 
 class CallExprAST : public ExprAST {
@@ -120,7 +119,7 @@ private:
 
 class FunctionSignatureAST : public ExprAST {
 public:
-    FunctionSignatureAST(std::string name, SymbolType return_value_type) : name(name), return_value_type(return_value_type) {
+    FunctionSignatureAST(std::string name, SymbolType return_value_type) : name(std::move(name)), return_value_type(return_value_type) {
         this->symbol_table = {};
     }
 
@@ -172,7 +171,7 @@ public:
 private:
     std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table, bool function_first = true);
     std::unique_ptr<ExprAST> parse_primary_expression(SymbolTable& symbol_table, bool function_first = true);
-    std::unique_ptr<CallExprAST> parse_call_expression(const std::string callee, SymbolTable& symbol_table);
+    std::unique_ptr<CallExprAST> parse_call_expression(std::string callee, SymbolTable& symbol_table);
     std::unique_ptr<FunctionSignatureAST> parse_function_signature(bool is_extern = false);
     void parse_function_definition();
     std::unique_ptr<IfStatementAST> parse_if_statement(SymbolTable& symbol_table);

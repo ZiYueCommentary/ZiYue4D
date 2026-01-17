@@ -1,38 +1,38 @@
 #pragma once
 
-#include "Token.h"
-#include "exceptions.h"
 #include <fstream>
+#include "exceptions.h"
+#include "Token.h"
 
-constexpr bool is_variable_type(SymbolType type) {
-    return type == SYMBOL_TYPE_INT || type == SYMBOL_TYPE_FLOAT || type == SYMBOL_TYPE_STRING || type == SYMBOL_TYPE_STRUCT || type == SYMBOL_TYPE_POINTER;
+constexpr bool is_variable_type(const SymbolType type) {
+    return type == SYMBOL_TYPE_INT || type == SYMBOL_TYPE_FLOAT || type == SYMBOL_TYPE_STRING || type ==
+           SYMBOL_TYPE_STRUCT || type == SYMBOL_TYPE_POINTER;
 }
 
-constexpr SymbolType token_to_type(Token token) {
-    switch (token)
-    {
-    case TOKEN_TYPE_INT:
-        return SYMBOL_TYPE_INT;
-    case TOKEN_TYPE_FLOAT:
-        return SYMBOL_TYPE_FLOAT;
-    case TOKEN_TYPE_STRING:
-        return SYMBOL_TYPE_STRING;
-    case TOKEN_TYPE_POINTER:
-        return SYMBOL_TYPE_POINTER;
-    default:
-        throw lex_exception("invalid type token");
+constexpr SymbolType token_to_type(const Token token) {
+    switch (token) {
+        case TOKEN_TYPE_INT:
+            return SYMBOL_TYPE_INT;
+        case TOKEN_TYPE_FLOAT:
+            return SYMBOL_TYPE_FLOAT;
+        case TOKEN_TYPE_STRING:
+            return SYMBOL_TYPE_STRING;
+        case TOKEN_TYPE_POINTER:
+            return SYMBOL_TYPE_POINTER;
+        default:
+            throw lex_exception("invalid type token");
     }
 }
 
 class Lex {
 public:
-    std::string identifier = "";
-    std::string case_identifier = "";
+    std::string identifier;
+    std::string case_identifier;
     int int_value = 0;
-    std::string string_value = "";
+    std::string string_value;
     float float_value = .0f;
 
-    Lex(std::string file) {
+    explicit Lex(const std::string& file) {
         this->file = std::move(std::make_unique<std::ifstream>(file));
 
         if (!this->file->good()) throw std::exception("Failed to open source file");

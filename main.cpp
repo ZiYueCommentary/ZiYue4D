@@ -1,23 +1,23 @@
-
-#include "CodeGen.h"
-#include "CLI11.hpp"
 #include <iostream>
+#include "CLI11.hpp"
+#include "CodeGen.h"
 
 int main(int argc, char** argv) {
-    CLI::App app{ "ZiYue4D Compiler" };
+    CLI::App app{"ZiYue4D Compiler"};
 
     // Define options
     std::string input, output, std;
-    bool show_progress = false, dump_module = false;
+    bool show_progress = false;
 #ifdef _DEBUG
     input = "example.sb"; output = "main.ll"; std = "std.sb"; show_progress = true; dump_module = true;
 #else
-    CLI::Option* option_input = app.add_option("-i,--input", input, "Input source file")->check(CLI::ExistingFile)->required(true);
-    CLI::Option* option_output = app.add_option("-o,--output", output, "Output source file")->required(true);
-    CLI::Option* option_stdlib = app.add_option("-s,--std", std, "Standard header")->required(false)->default_val("std.sb");
+    CLI::Option* option_input = app.add_option("-i,--input", input, "Input source file")->check(CLI::ExistingFile)->
+            required(true);
+    CLI::Option* option_output = app.add_option("-o,--output", output, "Output source file")->required(false);
+    CLI::Option* option_stdlib = app.add_option("-s,--std", std, "Standard header")->required(false)->
+            default_val("std.sb");
     CLI::Option* option_progress = app.add_flag("-p,--progress", show_progress, "Show progress")->required(false);
-    CLI::Option* option_dump = app.add_flag("-d,--dump", dump_module, "Dump output to the terminal")->required(false);
-    
+
     CLI11_PARSE(app, argc, argv);
 #endif
 
@@ -32,9 +32,6 @@ int main(int argc, char** argv) {
     codegen.optimize_string();
     codegen.generate();
 
-    codegen.write_file(output, dump_module);
-    //std::cout << "Executing...\n";
-    //codegen.init();
-    //std::cout << codegen.run();
+    codegen.write_file(output);
     return 0;
 }

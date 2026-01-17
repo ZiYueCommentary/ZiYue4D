@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AST.h"
-#include <map>
 
 class SemanticAnalyzer {
 public:
@@ -9,15 +8,17 @@ public:
         using namespace std;
         AST std_ast(std::make_unique<Lex>(std));
         if (std_ast.parse()) throw semantic_exception("invalid standard library");
-        for (auto& constant : std_ast.constant_table)
+        // initializing constants from std...
+        for (auto&[name, value] : std_ast.constant_table)
         {
-            this->ast->global_symbols.insert({ constant.first, std_ast.global_symbols.equal_range(constant.first).first->second });
-            this->ast->constant_table.emplace(constant.first, std::move(constant.second));
+            this->ast->global_symbols.insert({ name, std_ast.global_symbols.equal_range(name).first->second });
+            this->ast->constant_table.emplace(name, std::move(value));
         }
-        for (auto& std_func : std_ast.extern_function_table)
+        // initializing functions from std...
+        for (auto&[name, signature] : std_ast.extern_function_table)
         {
-            std_func.second->name = "ziyue4d_"s + std_func.second->name;
-            this->ast->extern_function_table.emplace(std_func.first, std::move(std_func.second));
+            signature->name = "ziyue4d_"s + signature->name;
+            this->ast->extern_function_table.emplace(name, std::move(signature));
         }
     }
     bool analyze();

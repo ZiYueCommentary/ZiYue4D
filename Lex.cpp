@@ -14,8 +14,7 @@ std::string parse_string_literal(const std::string& raw) {
     std::string result;
     for (size_t i = 0; i < raw.length(); ++i) {
         if (raw[i] == '\\' && i + 1 < raw.length()) {
-            char next = raw[++i];
-            switch (next) {
+            switch (char next = raw[++i]) {
             case 'n': result += '\n'; break;
             case 't': result += '\t'; break;
             case 'r': result += '\r'; break;
@@ -32,15 +31,6 @@ std::string parse_string_literal(const std::string& raw) {
                 }
                 break;
             }
-                    //case 'u': {
-                    //    if (i + 4 < raw.length()) {
-                    //        std::string hex = raw.substr(i + 1, 4);
-                    //        uint32_t codepoint = std::stoi(hex, nullptr, 16);
-                    //        result += encodeUTF8(codepoint);
-                    //        i += 4;
-                    //    }
-                    //    break;
-                    //}
             default: result += next; break;
             }
         }
@@ -84,9 +74,9 @@ int Lex::get_token() {
 
     if (last_char == '%') {
         if ((last_char = file->get()) == '0' || last_char == '1') {
-            std::string bin_int = std::string(1, (char)last_char);
+            std::string bin_int = std::string(1, static_cast<char>(last_char));
             while ((last_char = file->get()) == '0' || last_char == '1') {
-                bin_int += (char)last_char;
+                bin_int += static_cast<char>(last_char);
             }
             int_value = std::stoi(bin_int.c_str(), nullptr, 2);
             return TOKEN_INTEGER;
@@ -95,9 +85,9 @@ int Lex::get_token() {
     }
     if (last_char == '$') {
         if (isxdigit(last_char = file->get())) {
-            std::string hex_int = std::string(1, (char)last_char);
+            std::string hex_int = std::string(1, static_cast<char>(last_char));
             while (isxdigit(last_char = file->get())) {
-                hex_int += (char)last_char;
+                hex_int += static_cast<char>(last_char);
             }
             int_value = std::stoi(hex_int.c_str(), nullptr, 16);
             return TOKEN_INTEGER;

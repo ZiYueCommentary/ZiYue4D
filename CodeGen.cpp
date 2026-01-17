@@ -1,51 +1,39 @@
 #include "CodeGen.h"
-#include <llvm/IR/Verifier.h>
-#include <llvm/Support/TargetSelect.h>
+
+#include <ranges>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 
-#ifdef _WIN32
-#pragma comment(linker, "/export:??_7type_info@@6B@")
-#pragma comment(linker, "/export:??_U@YAPEAX_K@Z")
-#pragma comment(linker, "/export:??_V@YAXPEAX@Z")
-#pragma comment(linker, "/export:??3@YAXPEAX_K@Z")
-#pragma comment(linker, "/export:?_Facet_Register@std@@YAXPEAV_Facet_base@1@@Z")
-#endif
-
-void CodeGen::optimize_string()
-{
-    for (auto& func : semantic->ast->function_table) {
-        for (auto& expr : func.second->body) {
+void CodeGen::optimize_string() {
+    for (auto& val : semantic->ast->function_table | std::views::values) {
+        for (auto& expr : val->body) {
             expr = std::move(merge_literal_string_operations(std::move(expr)));
         }
     }
 }
 
-bool CodeGen::generate()
-{
+bool CodeGen::generate() {
     // initializing constants
-    for (auto& symbol : semantic->ast->constant_table) {
-        if (semantic->ast->is_variable(semantic->ast->global_symbols, symbol.first) == SYMBOL_TYPE_STRING) {
-            symbol.second = std::move(merge_literal_string_operations(std::move(symbol.second)));
-            StringExprAST& str = dynamic_cast<StringExprAST&>(*symbol.second);
-            llvm::GlobalVariable* variable = new llvm::GlobalVariable(
+    for (auto& [name, value] : semantic->ast->constant_table) {
+        if (semantic->ast->is_variable(semantic->ast->global_symbols, name) == SYMBOL_TYPE_STRING) {
+            value = std::move(merge_literal_string_operations(std::move(value)));
+            auto* variable = new llvm::GlobalVariable(
                 *this->module,
                 llvm::PointerType::get(*context, 0),
                 false,
                 llvm::GlobalValue::ExternalLinkage,
                 llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
-                symbol.first
+                name
             );
-            scoped_symbol_table.back().insert({ symbol.first, variable });
+            scoped_symbol_table.back().insert({name, variable});
             const auto& main = semantic->ast->function_table.equal_range("main").first->second;
             main->body.insert(main->body.begin(), std::make_unique<BinaryExprAST>(
-                '=',
-                std::move(std::make_unique<VariableExprAST>(std::move(std::string(symbol.first)))),
-                std::move(symbol.second)));
-        }
-        else {
-            scoped_symbol_table.back().insert({ symbol.first, visit(symbol.second) });
+                                  '=',
+                                  std::move(std::make_unique<VariableExprAST>(std::move(std::string(name)))),
+                                  std::move(value)));
+        } else {
+            scoped_symbol_table.back().insert({name, visit(value)});
         }
     }
 
@@ -53,73 +41,72 @@ bool CodeGen::generate()
     for (const auto& symbol : semantic->ast->global_symbols) {
         if (semantic->ast->constant_table.contains(symbol.first)) continue;
         switch (symbol.second) {
-        case SYMBOL_TYPE_INT:
-        {
-            llvm::GlobalVariable* variable = new llvm::GlobalVariable(
-                *this->module,
-                llvm::Type::getInt32Ty(*context),
-                false,
-                llvm::GlobalValue::ExternalLinkage,
-                llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)),
-                symbol.first
-            );
-            scoped_symbol_table.back().insert({ symbol.first, variable });
-            break;
-        }
-        case SYMBOL_TYPE_FLOAT:
-        {
-            llvm::GlobalVariable* variable = new llvm::GlobalVariable(
-                *this->module,
-                llvm::Type::getFloatTy(*context),
-                false,
-                llvm::GlobalValue::ExternalLinkage,
-                llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)),
-                symbol.first
-            );
-            scoped_symbol_table.back().insert({ symbol.first, variable });
-            break;
-        }
-        case SYMBOL_TYPE_STRING:
-        {
-            llvm::GlobalVariable* variable = new llvm::GlobalVariable(
-                *this->module,
-                llvm::PointerType::get(*context, 0),
-                false,
-                llvm::GlobalValue::ExternalLinkage,
-                llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
-                symbol.first
-            );
-            scoped_symbol_table.back().insert({ symbol.first, variable });
-            break;
-        }
+            case SYMBOL_TYPE_INT: {
+                auto* variable = new llvm::GlobalVariable(
+                    *this->module,
+                    llvm::Type::getInt32Ty(*context),
+                    false,
+                    llvm::GlobalValue::ExternalLinkage,
+                    llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)),
+                    symbol.first
+                );
+                scoped_symbol_table.back().insert({symbol.first, variable});
+                break;
+            }
+            case SYMBOL_TYPE_FLOAT: {
+                auto* variable = new llvm::GlobalVariable(
+                    *this->module,
+                    llvm::Type::getFloatTy(*context),
+                    false,
+                    llvm::GlobalValue::ExternalLinkage,
+                    llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)),
+                    symbol.first
+                );
+                scoped_symbol_table.back().insert({symbol.first, variable});
+                break;
+            }
+            case SYMBOL_TYPE_STRING: {
+                auto* variable = new llvm::GlobalVariable(
+                    *this->module,
+                    llvm::PointerType::get(*context, 0),
+                    false,
+                    llvm::GlobalValue::ExternalLinkage,
+                    llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
+                    symbol.first
+                );
+                scoped_symbol_table.back().insert({symbol.first, variable});
+                break;
+            }
         }
     }
 
     // register function signatures
-    for (auto& func : semantic->ast->extern_function_table) {
-        llvm::Function::Create(create_function_type(func.second), llvm::Function::ExternalLinkage, func.second->name, &*module);
+    for (auto& external_function_signature : semantic->ast->extern_function_table | std::views::values) {
+        llvm::Function::Create(create_function_type(external_function_signature), llvm::Function::ExternalLinkage,
+                               external_function_signature->name, &*module);
     }
-    for (auto& func : semantic->ast->function_table) {
-        llvm::Function::Create(create_function_type(func.second->signature), llvm::Function::ExternalLinkage, unique_function_name(func.second->signature), &*module);
+    for (const auto& external_function : semantic->ast->function_table | std::views::values) {
+        llvm::Function::Create(create_function_type(external_function->signature), llvm::Function::ExternalLinkage,
+                               unique_function_name(external_function->signature), &*module);
     }
 
-    // register function definations
-    for (auto& func : semantic->ast->function_table) {
-        llvm::Function* function = module->getFunction(unique_function_name(func.second->signature));
+    // register function definitions
+    for (const auto& func_def : semantic->ast->function_table | std::views::values) {
+        llvm::Function* function = module->getFunction(unique_function_name(func_def->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
-        scoped_symbol_table.push_back({});
-        semantic->scoped_symbol_tables.push_back({});
-        lifecycles.push_back({ true, {} });
+        scoped_symbol_table.emplace_back();
+        semantic->scoped_symbol_tables.emplace_back();
+        lifecycles.push_back({true, {}});
         builder->SetInsertPoint(block);
-        build_scoped_symbol_table(func.second->signature->symbol_table);
+        build_scoped_symbol_table(func_def->signature->symbol_table);
         int index = 0;
-        for (const auto& arg : func.second->signature->arguments) {
+        for (const auto& arg : func_def->signature->arguments) {
             function->getArg(index)->setName(arg->name);
             scoped_symbol_table.back().insert_or_assign(arg->name, function->getArg(index));
             index++;
         }
-        semantic->scope_function = &func.second->signature;
-        for (const auto& expr : func.second->body) {
+        semantic->scope_function = &func_def->signature;
+        for (const auto& expr : func_def->body) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) {
                 llvm::errs() << "unreachable code\n";
                 break;
@@ -128,13 +115,13 @@ bool CodeGen::generate()
         }
         if (builder->GetInsertBlock()->getTerminator() == nullptr) {
             release_lifecycle_resources(true);
-            switch (func.second->signature->return_value_type) {
-            case SYMBOL_TYPE_FLOAT:
-                builder->CreateRet(llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)));
-                break;
-            default:
-                builder->CreateRet(llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)));
-                break;
+            switch (func_def->signature->return_value_type) {
+                case SYMBOL_TYPE_FLOAT:
+                    builder->CreateRet(llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)));
+                    break;
+                default:
+                    builder->CreateRet(llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)));
+                    break;
             }
         }
         lifecycles.pop_back();
@@ -148,8 +135,7 @@ bool CodeGen::generate()
 }
 
 // There is no type check since I trust my semantic analyzer
-llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
-{
+llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
     if (typeid(*expr) == typeid(FloatExprAST)) {
         auto& float_expr = dynamic_cast<const FloatExprAST&>(*expr);
         return llvm::ConstantFP::get(*context, llvm::APFloat(float_expr.value));
@@ -175,23 +161,23 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             throw semantic_exception("illegal unary operation");
         }
         switch (unary_expr.op) {
-        case TOKEN_LOGIC_NOT:
-            return cast_value_to(builder->CreateICmpEQ(cast_value_to(value, SYMBOL_TYPE_INT), builder->getInt32(0)), SYMBOL_TYPE_INT);
-        case '-':
-            if (type == SYMBOL_TYPE_INT) {
-                return builder->CreateSub(builder->getInt32(0), value);
-            }
-            else {
-                return builder->CreateFSub(llvm::ConstantFP::get(value->getType(), 0.0f), value);
-            }
+            case TOKEN_LOGIC_NOT:
+                return cast_value_to(builder->CreateICmpEQ(cast_value_to(value, SYMBOL_TYPE_INT), builder->getInt32(0)),
+                                     SYMBOL_TYPE_INT);
+            case '-':
+                if (type == SYMBOL_TYPE_INT) {
+                    return builder->CreateSub(builder->getInt32(0), value);
+                } else {
+                    return builder->CreateFSub(llvm::ConstantFP::get(value->getType(), 0.0f), value);
+                }
         }
     }
     if (typeid(*expr) == typeid(BinaryExprAST)) {
         auto& bi_expr = dynamic_cast<const BinaryExprAST&>(*expr);
         llvm::Value* lhs = visit(bi_expr.lhs);
         llvm::Value* rhs = visit(bi_expr.rhs);
-        SymbolType lhs_type = semantic->get_type(bi_expr.lhs);
-        SymbolType rhs_type = semantic->get_type(bi_expr.rhs);
+        const SymbolType lhs_type = semantic->get_type(bi_expr.lhs);
+        const SymbolType rhs_type = semantic->get_type(bi_expr.rhs);
         if (bi_expr.op == '=') {
             if (typeid(*bi_expr.lhs) == typeid(VariableExprAST)) {
                 auto& var = dynamic_cast<const VariableExprAST&>(*bi_expr.lhs);
@@ -203,12 +189,13 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
             llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
             if (bi_expr.op == '+') {
-                llvm::Value* new_string = builder->CreateCall(module->getFunction("ziyue4d_Concat"), { new_lhs, new_rhs });
+                llvm::Value* new_string = builder->
+                        CreateCall(module->getFunction("ziyue4d_Concat"), {new_lhs, new_rhs});
                 lifecycles.back().values.insert(new_string);
                 return new_string;
             }
             if (bi_expr.op == TOKEN_EQUALS) {
-                return builder->CreateCall(module->getFunction("ziyue4d_StringEquals"), { new_lhs, new_rhs });
+                return builder->CreateCall(module->getFunction("ziyue4d_StringEquals"), {new_lhs, new_rhs});
             }
             return nullptr;
         }
@@ -216,22 +203,20 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_INT);
             llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_INT);
             switch (bi_expr.op) {
-            case TOKEN_LOGIC_AND:
-            {
-                llvm::Value* bool_lhs = builder->CreateICmpNE(new_lhs, builder->getInt32(0));
-                llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
-                return cast_value_to(builder->CreateAnd(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
-            }
-            case TOKEN_LOGIC_OR:
-            {
-                llvm::Value* bool_lhs = builder->CreateICmpNE(new_lhs, builder->getInt32(0));
-                llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
-                return cast_value_to(builder->CreateOr(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
-            }
-            case TOKEN_BITWISE_AND:
-                return builder->CreateAnd(new_lhs, new_rhs);
-            case TOKEN_BITWISE_OR:
-                return builder->CreateOr(new_lhs, new_rhs);
+                case TOKEN_LOGIC_AND: {
+                    llvm::Value* bool_lhs = builder->CreateICmpNE(new_lhs, builder->getInt32(0));
+                    llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
+                    return cast_value_to(builder->CreateAnd(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
+                }
+                case TOKEN_LOGIC_OR: {
+                    llvm::Value* bool_lhs = builder->CreateICmpNE(new_lhs, builder->getInt32(0));
+                    llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
+                    return cast_value_to(builder->CreateOr(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
+                }
+                case TOKEN_BITWISE_AND:
+                    return builder->CreateAnd(new_lhs, new_rhs);
+                case TOKEN_BITWISE_OR:
+                    return builder->CreateOr(new_lhs, new_rhs);
             }
             return nullptr;
         }
@@ -239,49 +224,49 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
             llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_FLOAT);
             llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_FLOAT);
             switch (bi_expr.op) {
-            case '+':
-                return builder->CreateFAdd(new_lhs, new_rhs);
-            case '-':
-                return builder->CreateFSub(new_lhs, new_rhs);
-            case '*':
-                return builder->CreateFMul(new_lhs, new_rhs);
-            case '/':
-                return builder->CreateFDiv(new_lhs, new_rhs);
-            case TOKEN_EQUALS:
-                return cast_value_to(builder->CreateFCmpOEQ(new_lhs, new_rhs), SYMBOL_TYPE_INT);
-            case TOKEN_NOT_EQUALS:
-                return cast_value_to(builder->CreateFCmpONE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
-            case TOKEN_LESS_THAN:
-                return cast_value_to(builder->CreateFCmpOLT(new_lhs, new_rhs), SYMBOL_TYPE_INT);
-            case TOKEN_LESS_THAN_OR_EQUALS:
-                return cast_value_to(builder->CreateFCmpOLE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
-            case TOKEN_GREATER_THAN:
-                return cast_value_to(builder->CreateFCmpOGT(new_lhs, new_rhs), SYMBOL_TYPE_INT);
-            case TOKEN_GREATER_THAN_OR_EQUALS:
-                return cast_value_to(builder->CreateFCmpOGE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+                case '+':
+                    return builder->CreateFAdd(new_lhs, new_rhs);
+                case '-':
+                    return builder->CreateFSub(new_lhs, new_rhs);
+                case '*':
+                    return builder->CreateFMul(new_lhs, new_rhs);
+                case '/':
+                    return builder->CreateFDiv(new_lhs, new_rhs);
+                case TOKEN_EQUALS:
+                    return cast_value_to(builder->CreateFCmpOEQ(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+                case TOKEN_NOT_EQUALS:
+                    return cast_value_to(builder->CreateFCmpONE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+                case TOKEN_LESS_THAN:
+                    return cast_value_to(builder->CreateFCmpOLT(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+                case TOKEN_LESS_THAN_OR_EQUALS:
+                    return cast_value_to(builder->CreateFCmpOLE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+                case TOKEN_GREATER_THAN:
+                    return cast_value_to(builder->CreateFCmpOGT(new_lhs, new_rhs), SYMBOL_TYPE_INT);
+                case TOKEN_GREATER_THAN_OR_EQUALS:
+                    return cast_value_to(builder->CreateFCmpOGE(new_lhs, new_rhs), SYMBOL_TYPE_INT);
             }
         }
         switch (bi_expr.op) {
-        case '+':
-            return builder->CreateAdd(lhs, rhs);
-        case '-':
-            return builder->CreateSub(lhs, rhs);
-        case '*':
-            return builder->CreateMul(lhs, rhs);
-        case '/':
-            return builder->CreateSDiv(lhs, rhs);
-        case TOKEN_EQUALS:
-            return cast_value_to(builder->CreateICmpEQ(lhs, rhs), SYMBOL_TYPE_INT);
-        case TOKEN_NOT_EQUALS:
-            return cast_value_to(builder->CreateICmpNE(lhs, rhs), SYMBOL_TYPE_INT);
-        case TOKEN_LESS_THAN:
-            return cast_value_to(builder->CreateICmpSLT(lhs, rhs), SYMBOL_TYPE_INT);
-        case TOKEN_LESS_THAN_OR_EQUALS:
-            return cast_value_to(builder->CreateICmpSLE(lhs, rhs), SYMBOL_TYPE_INT);
-        case TOKEN_GREATER_THAN:
-            return cast_value_to(builder->CreateICmpSGT(lhs, rhs), SYMBOL_TYPE_INT);
-        case TOKEN_GREATER_THAN_OR_EQUALS:
-            return cast_value_to(builder->CreateICmpSGE(lhs, rhs), SYMBOL_TYPE_INT);
+            case '+':
+                return builder->CreateAdd(lhs, rhs);
+            case '-':
+                return builder->CreateSub(lhs, rhs);
+            case '*':
+                return builder->CreateMul(lhs, rhs);
+            case '/':
+                return builder->CreateSDiv(lhs, rhs);
+            case TOKEN_EQUALS:
+                return cast_value_to(builder->CreateICmpEQ(lhs, rhs), SYMBOL_TYPE_INT);
+            case TOKEN_NOT_EQUALS:
+                return cast_value_to(builder->CreateICmpNE(lhs, rhs), SYMBOL_TYPE_INT);
+            case TOKEN_LESS_THAN:
+                return cast_value_to(builder->CreateICmpSLT(lhs, rhs), SYMBOL_TYPE_INT);
+            case TOKEN_LESS_THAN_OR_EQUALS:
+                return cast_value_to(builder->CreateICmpSLE(lhs, rhs), SYMBOL_TYPE_INT);
+            case TOKEN_GREATER_THAN:
+                return cast_value_to(builder->CreateICmpSGT(lhs, rhs), SYMBOL_TYPE_INT);
+            case TOKEN_GREATER_THAN_OR_EQUALS:
+                return cast_value_to(builder->CreateICmpSGE(lhs, rhs), SYMBOL_TYPE_INT);
         }
     }
     if (typeid(*expr) == typeid(VariableExprAST)) {
@@ -292,8 +277,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         auto& call = dynamic_cast<const CallExprAST&>(*expr);
         auto& func = *semantic->seek_best_match_function(call);
         std::vector<llvm::Value*> built_arguments = {};
-        for (int i = 0; i < func->arguments.size(); i++)
-        {
+        for (int i = 0; i < func->arguments.size(); i++) {
             built_arguments.push_back(cast_value_to(
                 visit(call.arguments.size() > i ? call.arguments.at(i) : func->arguments.at(i)->default_value),
                 func->arguments.at(i)->type));
@@ -307,18 +291,17 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         llvm::Value* return_value = nullptr;
         if (ret.expr == nullptr) {
             switch ((*semantic->scope_function)->return_value_type) {
-            case SYMBOL_TYPE_FLOAT:
-                return_value = llvm::ConstantFP::get(*context, llvm::APFloat(0.0f));
-                break;
-            case SYMBOL_TYPE_STRING:
-                return_value = build_literal_string("");
-                break;
-            default:
-                return_value = llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true));
-                break;
+                case SYMBOL_TYPE_FLOAT:
+                    return_value = llvm::ConstantFP::get(*context, llvm::APFloat(0.0f));
+                    break;
+                case SYMBOL_TYPE_STRING:
+                    return_value = build_literal_string("");
+                    break;
+                default:
+                    return_value = llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true));
+                    break;
             }
-        }
-        else {
+        } else {
             return_value = cast_value_to(visit(ret.expr), (*semantic->scope_function)->return_value_type);
         }
         release_lifecycle_resources(true, return_value);
@@ -333,11 +316,11 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         llvm::BasicBlock* post_if_statement = llvm::BasicBlock::Create(*context, "", scope);
         builder->CreateCondBr(condition, statement_true_block, statement_false_block);
         // statement true
-        semantic->scoped_symbol_tables.push_back({});
-        scoped_symbol_table.push_back({});
+        semantic->scoped_symbol_tables.emplace_back();
+        scoped_symbol_table.emplace_back();
         build_scoped_symbol_table(if_statement.statement_true_symbol_table);
         builder->SetInsertPoint(statement_true_block);
-        lifecycles.push_back({ false, {} });
+        lifecycles.push_back({false, {}});
         for (const auto& if_expr : if_statement.statement_true) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
             visit(if_expr);
@@ -350,11 +333,11 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
         scoped_symbol_table.pop_back();
         semantic->scoped_symbol_tables.pop_back();
         // statement false
-        semantic->scoped_symbol_tables.push_back({});
-        scoped_symbol_table.push_back({});
+        semantic->scoped_symbol_tables.emplace_back();
+        scoped_symbol_table.emplace_back();
         build_scoped_symbol_table(if_statement.statement_false_symbol_table);
         builder->SetInsertPoint(statement_false_block);
-        lifecycles.push_back({ false, {} });
+        lifecycles.push_back({false, {}});
         for (const auto& if_expr : if_statement.statement_false) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
             visit(if_expr);
@@ -372,185 +355,178 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr)
     return nullptr;
 }
 
-llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type)
-{
+llvm::Value* CodeGen::cast_value_to(llvm::Value* value, SymbolType type) {
     switch (value->getType()->getTypeID()) {
-    case llvm::Type::IntegerTyID:
-        switch (type) {
-        case SYMBOL_TYPE_POINTER:
-        case SYMBOL_TYPE_STRING:
-        {
-            llvm::Value* new_value = builder->CreateCall(module->getFunction("ziyue4d_int_to_string__"), { value });
-            lifecycles.back().values.insert(new_value);
-            return new_value;
-        }
-        case SYMBOL_TYPE_FLOAT:
-            return builder->CreateSIToFP(value, llvm::Type::getFloatTy(*context));
-        case SYMBOL_TYPE_INT:
-            if (value->getType() == builder->getInt1Ty()) { // bool to int32
-                return builder->CreateZExt(value, builder->getInt32Ty());
+        case llvm::Type::IntegerTyID:
+            switch (type) {
+                case SYMBOL_TYPE_POINTER:
+                case SYMBOL_TYPE_STRING: {
+                    llvm::Value* new_value = builder->CreateCall(module->getFunction("ziyue4d_int_to_string__"),
+                                                                 {value});
+                    lifecycles.back().values.insert(new_value);
+                    return new_value;
+                }
+                case SYMBOL_TYPE_FLOAT:
+                    return builder->CreateSIToFP(value, llvm::Type::getFloatTy(*context));
+                case SYMBOL_TYPE_INT:
+                    if (value->getType() == builder->getInt1Ty()) {
+                        // bool to int32
+                        return builder->CreateZExt(value, builder->getInt32Ty());
+                    }
+                default:
+                    return value;
             }
-        default:
-            return value;
-        }
-    case llvm::Type::FloatTyID:
-        switch (type) {
-        case SYMBOL_TYPE_POINTER:
-        case SYMBOL_TYPE_STRING:
-        {
-            llvm::Value* new_value = builder->CreateCall(module->getFunction("ziyue4d_float_to_string__"), { value });
-            lifecycles.back().values.insert(new_value);
-            return new_value;
-        }
-        case SYMBOL_TYPE_INT:
-            return builder->CreateFPToSI(builder->CreateCall(module->getFunction("ziyue4d_Round"), value), llvm::Type::getInt32Ty(*context));
-        default:
-            return value;
-        }
+        case llvm::Type::FloatTyID:
+            switch (type) {
+                case SYMBOL_TYPE_POINTER:
+                case SYMBOL_TYPE_STRING: {
+                    llvm::Value* new_value = builder->CreateCall(module->getFunction("ziyue4d_float_to_string__"),
+                                                                 {value});
+                    lifecycles.back().values.insert(new_value);
+                    return new_value;
+                }
+                case SYMBOL_TYPE_INT:
+                    return builder->CreateFPToSI(builder->CreateCall(module->getFunction("ziyue4d_Round"), value),
+                                                 llvm::Type::getInt32Ty(*context));
+                default:
+                    return value;
+            }
     }
     return value;
 }
 
-llvm::FunctionType* CodeGen::create_function_type(const std::unique_ptr<FunctionSignatureAST>& signature)
-{
-    std::vector<llvm::Type*> arguments{ signature->arguments.size() };
-    std::transform(signature->arguments.begin(),
-        signature->arguments.end(),
-        arguments.begin(),
-        [this](const std::unique_ptr<FunctionArgument>& arg) { return symbol_type_to_type(arg->type); });
+llvm::FunctionType* CodeGen::create_function_type(const std::unique_ptr<FunctionSignatureAST>& signature) {
+    std::vector<llvm::Type*> arguments{signature->arguments.size()};
+    std::ranges::transform(signature->arguments,
+                           arguments.begin(),
+                           [this](const std::unique_ptr<FunctionArgument>& arg) {
+                               return symbol_type_to_type(arg->type);
+                           });
     return llvm::FunctionType::get(symbol_type_to_type(signature->return_value_type), arguments, false);
 }
 
-llvm::Type* CodeGen::token_to_type(Token token)
-{
-    switch (token)
-    {
-    case TOKEN_TYPE_INT:
-        return llvm::Type::getInt32Ty(*context);
-    case TOKEN_TYPE_FLOAT:
-        return llvm::Type::getFloatTy(*context);
-    case TOKEN_TYPE_STRING:
-        return llvm::PointerType::get(*context, 0);
-        break;
-    default:
-        break;
+llvm::Type* CodeGen::token_to_type(const Token token) const {
+    switch (token) {
+        case TOKEN_TYPE_INT:
+            return llvm::Type::getInt32Ty(*context);
+        case TOKEN_TYPE_FLOAT:
+            return llvm::Type::getFloatTy(*context);
+        case TOKEN_TYPE_STRING:
+            return llvm::PointerType::get(*context, 0);
+            break;
+        default:
+            break;
     }
 }
 
-llvm::Type* CodeGen::symbol_type_to_type(SymbolType type)
-{
-    switch (type)
-    {
-    case SYMBOL_TYPE_INT:
-        return llvm::Type::getInt32Ty(*context);
-    case SYMBOL_TYPE_FLOAT:
-        return llvm::Type::getFloatTy(*context);
-    case SYMBOL_TYPE_STRING:
-        return llvm::PointerType::get(*context, 0);
-    case SYMBOL_TYPE_VOID:
-        return llvm::Type::getVoidTy(*context);
-    case SYMBOL_TYPE_FUNCTION:
-    case SYMBOL_TYPE_STRUCT:
-    default:
-        return llvm::PointerType::get(*context, 0);
+llvm::Type* CodeGen::symbol_type_to_type(SymbolType type) const {
+    switch (type) {
+        case SYMBOL_TYPE_INT:
+            return llvm::Type::getInt32Ty(*context);
+        case SYMBOL_TYPE_FLOAT:
+            return llvm::Type::getFloatTy(*context);
+        case SYMBOL_TYPE_STRING:
+            return llvm::PointerType::get(*context, 0);
+        case SYMBOL_TYPE_VOID:
+            return llvm::Type::getVoidTy(*context);
+        case SYMBOL_TYPE_FUNCTION:
+        case SYMBOL_TYPE_STRUCT:
+        default:
+            return llvm::PointerType::get(*context, 0);
     }
 }
 
-std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature)
-{
-    static std::map<void*, std::string> cache = {};
+std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature) {
+    static std::map<void*, std::string> cache = {}; // This is an unsafe practice.
     if (signature->name == "main") return "main";
-    if (cache.contains((void*)&signature)) return cache.at((void*)&signature); // what am i doing?
+    if (cache.contains((void*) &signature)) return cache.at((void*) &signature);
 
-    auto extern_func = semantic->ast->extern_function_table.find(signature->name.starts_with("ziyue4d_") ? to_lower_string(signature->name.substr(8)) : to_lower_string(signature->name));
+    auto extern_func = semantic->ast->extern_function_table.find(
+        signature->name.starts_with("ziyue4d_")
+            ? to_lower_string(signature->name.substr(8))
+            : to_lower_string(signature->name));
     if (extern_func != semantic->ast->extern_function_table.end() && extern_func->second == signature) {
-        cache.insert({ (void*)&signature, signature->name });
-        return cache.at((void*)&signature);
+        cache.insert({(void*) &signature, signature->name});
+        return cache.at((void*) &signature);
     }
 
-    int mandatory_args = std::count_if(signature->arguments.begin(),
-        signature->arguments.end(),
-        [](const std::unique_ptr<FunctionArgument>& arg) {
-            return arg->default_value == nullptr;
-        });
+    int mandatory_args = std::ranges::count_if(signature->arguments,
+                                               [](const std::unique_ptr<FunctionArgument>& arg) {
+                                                   return arg->default_value == nullptr;
+                                               });
     int optional_args = signature->arguments.size() - mandatory_args;
     char return_value_type = 'i';
-    switch (signature->return_value_type)
-    {
-    case SYMBOL_TYPE_FLOAT:
-        return_value_type = 'f';
-        break;
-    case SYMBOL_TYPE_STRING:
-        return_value_type = 's';
-        break;
-    case SYMBOL_TYPE_STRUCT:
-        return_value_type = 'p';
+    switch (signature->return_value_type) {
+        case SYMBOL_TYPE_FLOAT:
+            return_value_type = 'f';
+            break;
+        case SYMBOL_TYPE_STRING:
+            return_value_type = 's';
+            break;
+        case SYMBOL_TYPE_STRUCT:
+            return_value_type = 'p';
     }
 
-    std::string&& stylized = std::move(std::format("{}{}_{}_{}", return_value_type, signature->name, mandatory_args, optional_args));
-    cache.insert({ (void*)&signature, stylized });
+    std::string&& stylized = std::move(std::format("{}{}_{}_{}", return_value_type, signature->name, mandatory_args,
+                                                   optional_args));
+    cache.insert({(void*) &signature, stylized});
 
-    return cache.at((void*)&signature);
+    return cache.at((void*) &signature);
 }
 
-void CodeGen::update_variable_value(const std::string& name, llvm::Value* value)
-{
-    for (auto it = scoped_symbol_table.rbegin(); it != scoped_symbol_table.rend(); it++)
-    {
-        if (it->contains(name)) {
-            it->insert_or_assign(name, value);
+void CodeGen::update_variable_value(const std::string& name, llvm::Value* value) {
+    for (auto& table : std::ranges::reverse_view(scoped_symbol_table)) {
+        if (table.contains(name)) {
+            table.insert_or_assign(name, value);
             return;
         }
     }
-    if (scoped_symbol_table.front().contains(name)) { // global variable
-        auto global_variable = llvm::cast<llvm::GlobalVariable>(scoped_symbol_table.front().at(name));
+    if (scoped_symbol_table.front().contains(name)) {
+        // global variable
+        const auto global_variable = llvm::cast<llvm::GlobalVariable>(scoped_symbol_table.front().at(name));
         builder->CreateStore(value, global_variable);
     }
 }
 
-llvm::Value* CodeGen::find_variable_value(const std::string& name)
-{
-    for (auto it = scoped_symbol_table.crbegin(); it != scoped_symbol_table.crend(); it++)
-    {
-        if (it->contains(name)) return it->at(name);
+llvm::Value* CodeGen::find_variable_value(const std::string& name) {
+    for (const auto& table : std::ranges::reverse_view(scoped_symbol_table)) {
+        if (table.contains(name)) return table.at(name);
     }
-    if (semantic->ast->constant_table.contains(name) && semantic->ast->is_variable(semantic->ast->global_symbols, name) != SYMBOL_TYPE_STRING) { // constant
+    if (semantic->ast->constant_table.contains(name) &&
+        semantic->ast->is_variable(semantic->ast->global_symbols, name) != SYMBOL_TYPE_STRING) {
+        // constant
         return scoped_symbol_table.front().at(name);
     }
-    if (scoped_symbol_table.front().contains(name)) { // global variable
+    if (scoped_symbol_table.front().contains(name)) {
+        // global variable
         auto global_variable = llvm::cast<llvm::GlobalVariable>(scoped_symbol_table.front().at(name));
         return builder->CreateLoad(global_variable->getValueType(), global_variable);
     }
 }
 
-void CodeGen::release_lifecycle_resources(bool is_function_return, llvm::Value* return_value)
-{
-    for (auto it = lifecycles.crbegin(); it != lifecycles.crend(); it++)
-    {
-        for (auto value : it->values) {
+void CodeGen::release_lifecycle_resources(const bool is_function_return, const llvm::Value* return_value) {
+    for (const auto& [is_function, values] : std::ranges::reverse_view(lifecycles)) {
+        for (auto value : values) {
             if (value != return_value) {
-                builder->CreateCall(module->getFunction("ziyue4d_release_string__"), { value });
+                builder->CreateCall(module->getFunction("ziyue4d_release_string__"), {value});
             }
         }
-        if ((!is_function_return) || (is_function_return && it->is_function)) break;
+        if (!is_function_return || is_function) break;
     }
 }
 
-llvm::Value* CodeGen::build_literal_string(const std::string& str)
-{
+llvm::Value* CodeGen::build_literal_string(const std::string& str) {
     static std::unordered_map<std::string, llvm::Constant*> global_string_ptrs = {};
-    if (!global_string_ptrs.contains(str)) global_string_ptrs.insert({ str, builder->CreateGlobalStringPtr(str) });
-    llvm::Value* built_string = builder->CreateCall(module->getFunction("ziyue4d_create_string__"), { global_string_ptrs.at(str) });
+    if (!global_string_ptrs.contains(str)) global_string_ptrs.insert({str, builder->CreateGlobalStringPtr(str)});
+    llvm::Value* built_string = builder->CreateCall(module->getFunction("ziyue4d_create_string__"),
+                                                    {global_string_ptrs.at(str)});
     lifecycles.back().values.insert(built_string);
     return built_string;
 }
 
-std::unique_ptr<ExprAST> CodeGen::merge_literal_string_operations(std::unique_ptr<ExprAST> expr)
-{
+std::unique_ptr<ExprAST> CodeGen::merge_literal_string_operations(std::unique_ptr<ExprAST> expr) {
     if (typeid(*expr) == typeid(CallExprAST)) {
-        auto& call = dynamic_cast<CallExprAST&>(*expr);
-        for (auto& arg : call.arguments)
-        {
+        for (auto& call = dynamic_cast<CallExprAST&>(*expr); auto& arg : call.arguments) {
             arg = merge_literal_string_operations(std::move(arg));
         }
     }
@@ -569,14 +545,12 @@ std::unique_ptr<ExprAST> CodeGen::merge_literal_string_operations(std::unique_pt
     return expr;
 }
 
-bool CodeGen::is_literal_expression(const ExprAST& expr)
-{
+bool CodeGen::is_literal_expression(const ExprAST& expr) {
     const auto& ty = typeid(expr);
     return ty == typeid(StringExprAST) || ty == typeid(IntegerExprAST) || ty == typeid(FloatExprAST);
 }
 
-std::string CodeGen::literal_to_string(const ExprAST& expr)
-{
+std::string CodeGen::literal_to_string(const ExprAST& expr) {
     if (typeid(expr) == typeid(StringExprAST)) {
         auto& str = dynamic_cast<const StringExprAST&>(expr);
         return str.string;
@@ -591,71 +565,49 @@ std::string CodeGen::literal_to_string(const ExprAST& expr)
     }
 }
 
-void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table)
-{
+void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table) {
     for (const auto& symbol : symbol_table) {
         if (semantic->ast->is_variable(symbol_table, symbol.first)) {
             semantic->scoped_symbol_tables.back().emplace(symbol.first, symbol.second);
             switch (symbol.second) {
-            case SYMBOL_TYPE_INT:
-                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)) });
-                break;
-            case SYMBOL_TYPE_FLOAT:
-                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)) });
-                break;
-            case SYMBOL_TYPE_STRING:
-                scoped_symbol_table.back().insert({ symbol.first, build_literal_string("") });
-                break;
-            case SYMBOL_TYPE_POINTER:
-                scoped_symbol_table.back().insert({ symbol.first, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)) });
+                case SYMBOL_TYPE_INT:
+                    scoped_symbol_table.back().insert({
+                        symbol.first, llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true))
+                    });
+                    break;
+                case SYMBOL_TYPE_FLOAT:
+                    scoped_symbol_table.back().insert({
+                        symbol.first, llvm::ConstantFP::get(*context, llvm::APFloat(0.0f))
+                    });
+                    break;
+                case SYMBOL_TYPE_STRING:
+                    scoped_symbol_table.back().insert({symbol.first, build_literal_string("")});
+                    break;
+                case SYMBOL_TYPE_POINTER:
+                    scoped_symbol_table.back().insert({
+                        symbol.first, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0))
+                    });
             }
         }
     }
 }
 
-std::string CodeGen::to_lower_string(const std::string& str)
-{
+std::string CodeGen::to_lower_string(const std::string& str) {
     std::string result{};
     result.reserve(str.length());
-    for (size_t i = 0; i < str.length(); i++)
-    {
+    for (size_t i = 0; i < str.length(); i++) {
         result.push_back(std::tolower(str.at(i)));
     }
     return result;
 }
 
-void JIT::init()
-{
-    //llvm::InitializeNativeTarget();
-    //llvm::InitializeNativeTargetAsmPrinter();
-    //llvm::InitializeNativeTargetAsmParser();
-    //auto jit = llvm::orc::LLJITBuilder().create();
-    //if (!jit) throw std::runtime_error("failed to initialize JIT");
-    //this->jit = std::move(*jit);
-    //auto stdlib = llvm::parseBitcodeFile(**llvm::MemoryBuffer::getFile("stdlib.bc"), *context);
-    //module->setTargetTriple(stdlib->get()->getTargetTriple());
-    //module->print(llvm::errs(), nullptr);
-    //auto std_module = llvm::orc::ThreadSafeModule(std::move(*stdlib), std::make_unique<llvm::LLVMContext>());
-    //auto program_module = llvm::orc::ThreadSafeModule(std::move(module), std::make_unique<llvm::LLVMContext>());
-    //this->jit->addIRModule(std::move(std_module));
-    //this->jit->addIRModule(std::move(program_module));
-}
-
-int JIT::run()
-{
-    //jit->initialize(jit->getMainJITDylib());
-    //auto sym = jit->lookup("main");
-    //auto main = sym->toPtr<int (*)()>();
-    //int result = main();
-    //return result;
-    return 0;
-}
-
-std::error_code Compiler::write_file(const std::string& file, bool dump_module)
-{
+std::error_code Compiler::write_file(const std::string& file) {
     std::error_code err;
-    llvm::raw_fd_ostream ofstream{ file, err };
-    module->print(ofstream, nullptr);
-    if (dump_module) module->print(llvm::outs(), nullptr);
+    if (file.empty()) {
+        module->print(llvm::outs(), nullptr);
+    } else {
+        llvm::raw_fd_ostream ofstream{file, err};
+        module->print(ofstream, nullptr);
+    }
     return err;
 }
