@@ -1,8 +1,8 @@
 #include "Lex.h"
 
+#include <iostream>
 #include <string>
 #include <unordered_set>
-#include <iostream>
 
 const std::unordered_set<char> operator_chars = {
     '+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|',

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include "Lex.h"
 
 using SymbolTable = std::unordered_multimap<std::string, SymbolType>;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <memory>
 #include "exceptions.h"
 #include "Token.h"
 
@@ -35,7 +36,7 @@ public:
     explicit Lex(const std::string& file) {
         this->file = std::move(std::make_unique<std::ifstream>(file));
 
-        if (!this->file->good()) throw std::exception("Failed to open source file");
+        if (!this->file->good()) throw lex_exception("Failed to open source file");
     }
 
     int get_token();
