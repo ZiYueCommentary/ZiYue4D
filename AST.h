@@ -17,7 +17,7 @@ struct FunctionArgument {
     const SymbolType type;
     const std::unique_ptr<ExprAST> default_value;
 
-    FunctionArgument(std::string&& name, SymbolType type, std::unique_ptr<ExprAST> default_value) : name(std::move(name)), type(type), default_value(std::move(default_value)) {}
+    FunctionArgument(std::string&& name, const SymbolType type, std::unique_ptr<ExprAST> default_value) : name(std::move(name)), type(type), default_value(std::move(default_value)) {}
     ~FunctionArgument() = default;
 };
 
@@ -58,7 +58,7 @@ private:
 
 class FloatExprAST : public ExprAST {
 public:
-    FloatExprAST(float value) : value(value) {
+    FloatExprAST(const float value) : value(value) {
 
     }
 
@@ -120,7 +120,7 @@ private:
 
 class FunctionSignatureAST : public ExprAST {
 public:
-    FunctionSignatureAST(std::string name, SymbolType return_value_type) : name(std::move(name)), return_value_type(return_value_type) {
+    FunctionSignatureAST(std::string name, const SymbolType return_value_type) : name(std::move(name)), return_value_type(return_value_type) {
         this->symbol_table = {};
     }
 

@@ -31,12 +31,12 @@ bool AST::parse() {
             std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression(main->signature->symbol_table));
             main->body.push_back(std::move(parse_expression(std::move(lhs), main->signature->symbol_table)));
         } catch (ast_exception &e) {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << " at " << lex->line << ':' << lex->pos << '\n';
             while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT) { this->token = lex->get_token(); }
             occur_errors = true;
         }
         catch (lex_exception &e) {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << " at " << lex->line << ':' << lex->pos << '\n';
             while (token != TOKEN_EOF && token != TOKEN_END_OF_STMT) { this->token = lex->get_token(); }
             occur_errors = true;
         }

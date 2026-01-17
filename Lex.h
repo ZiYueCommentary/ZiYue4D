@@ -32,6 +32,7 @@ public:
     int int_value = 0;
     std::string string_value;
     float float_value = .0f;
+    size_t line = 1, pos = 0;
 
     explicit Lex(const std::string& file) {
         this->file = std::move(std::make_unique<std::ifstream>(file));
@@ -44,4 +45,6 @@ public:
 private:
     std::unique_ptr<std::ifstream> file;
     int last_char = ' ';
+
+    int next_char();
 };
