@@ -66,7 +66,7 @@ int Lex::next_char() {
 
 int Lex::get_token() {
     while (isspace(last_char) && last_char != '\r' && last_char != '\n') next_char();
-    if (last_char == '\n' || last_char == ':') {
+    if (last_char == '\n' || last_char == ':' || last_char == '\r') {
         next_char();
         return TOKEN_END_OF_STMT;
     }
@@ -99,7 +99,7 @@ int Lex::get_token() {
             while ((next_char()) == '0' || last_char == '1') {
                 bin_int += static_cast<char>(last_char);
             }
-            int_value = std::stoi(bin_int.c_str(), nullptr, 2);
+            int_value = std::stoi(bin_int, nullptr, 2);
             return TOKEN_INTEGER;
         }
         return TOKEN_TYPE_INT;
@@ -110,7 +110,7 @@ int Lex::get_token() {
             while (isxdigit(next_char())) {
                 hex_int += static_cast<char>(last_char);
             }
-            int_value = std::stoi(hex_int.c_str(), nullptr, 16);
+            int_value = std::stoi(hex_int, nullptr, 16);
             return TOKEN_INTEGER;
         }
         return TOKEN_TYPE_STRING;

@@ -6,7 +6,7 @@
 #include <llvm/IRReader/IRReader.h>
 
 void CodeGen::optimize_string() {
-    for (auto& val : semantic->ast->function_table | std::views::values) {
+    for (const auto& val : semantic->ast->function_table | std::views::values) {
         for (auto& expr : val->body) {
             expr = std::move(merge_literal_string_operations(std::move(expr)));
         }
@@ -413,7 +413,6 @@ llvm::Type* CodeGen::token_to_type(const Token token) const {
             return llvm::Type::getFloatTy(*context);
         case TOKEN_TYPE_STRING:
             return llvm::PointerType::get(*context, 0);
-            break;
         default:
             break;
     }
