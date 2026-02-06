@@ -66,9 +66,13 @@ int Lex::next_char() {
 
 int Lex::get_token() {
     while (isspace(last_char) && last_char != '\r' && last_char != '\n') next_char();
-    if (last_char == '\n' || last_char == ':' || last_char == '\r') {
+    if (last_char == '\n' || last_char == '\r') {
         next_char();
-        return TOKEN_END_OF_STMT;
+        return TOKEN_LINE_FEED;
+    }
+    if (last_char == ':') {
+        next_char();
+        return TOKEN_COLON;
     }
 
     if (last_char == ';') {
@@ -79,7 +83,7 @@ int Lex::get_token() {
     }
 
     if (last_char == '/') {
-        if ((next_char()) == '*') {
+        if (next_char() == '*') {
             do {
                 if (last_char == '*') {
                     if ((next_char()) == '/') break;
@@ -94,9 +98,9 @@ int Lex::get_token() {
     }
 
     if (last_char == '%') {
-        if ((next_char()) == '0' || last_char == '1') {
+        if (next_char() == '0' || last_char == '1') {
             std::string bin_int = std::string(1, static_cast<char>(last_char));
-            while ((next_char()) == '0' || last_char == '1') {
+            while (next_char() == '0' || last_char == '1') {
                 bin_int += static_cast<char>(last_char);
             }
             int_value = std::stoi(bin_int, nullptr, 2);
@@ -225,7 +229,7 @@ int Lex::get_token() {
 
     if (last_char == EOF) return TOKEN_EOF;
 
-    int curr_char = last_char;
+    const int curr_char = last_char;
     next_char();
     return curr_char;
 }

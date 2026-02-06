@@ -25,6 +25,10 @@ constexpr SymbolType token_to_type(const Token token) {
     }
 }
 
+constexpr bool is_end_of_stmt(const int token) {
+    return token == TOKEN_LINE_FEED || token == TOKEN_COLON;
+}
+
 class Lex {
 public:
     std::string identifier;

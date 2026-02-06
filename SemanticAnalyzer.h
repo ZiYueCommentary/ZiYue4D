@@ -11,7 +11,7 @@ public:
         // initializing constants from std...
         for (auto&[name, value] : std_ast.constant_table)
         {
-            this->ast->global_symbols.insert({ name, std_ast.global_symbols.equal_range(name).first->second });
+            this->ast->scoped_symbol_table.front()->insert({ name, std_ast.scoped_symbol_table.front()->equal_range(name).first->second });
             this->ast->constant_table.emplace(name, std::move(value));
         }
         // initializing functions from std...
@@ -35,7 +35,7 @@ private:
 
     std::unique_ptr<AST> ast;
     std::unique_ptr<FunctionSignatureAST>* scope_function = nullptr;
-    std::vector<std::unordered_map<std::string, SymbolType>> scoped_symbol_tables;
+    std::vector<std::unordered_map<std::string, SymbolType>> scoped_symbol_types;
 
     friend class CodeGen;
 };

@@ -5,7 +5,8 @@
 
 enum Token {
     TOKEN_EOF = INT_MIN,
-    TOKEN_END_OF_STMT,
+    TOKEN_LINE_FEED,
+    TOKEN_COLON,
     TOKEN_IDENTIFIER,
     TOKEN_FUNCTION,
     TOKEN_EXTERN,
@@ -36,7 +37,9 @@ enum Token {
     TOKEN_ELSE,
     TOKEN_ELSE_IF,
     TOKEN_THEN,
-    TOKEN_ENDIF
+    TOKEN_ENDIF,
+    TOKEN_WHILE,
+    TOKEN_WEND
 };
 
 enum SymbolType {
@@ -65,5 +68,7 @@ const std::unordered_map<std::string, Token> tokens = {
     {"else", TOKEN_ELSE},
     {"elseif", TOKEN_ELSE_IF},
     {"then", TOKEN_THEN},
-    {"endif", TOKEN_ENDIF}
+    {"endif", TOKEN_ENDIF},
+    {"while", TOKEN_WHILE},
+    {"wend", TOKEN_WEND}
 };

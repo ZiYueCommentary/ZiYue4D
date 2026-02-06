@@ -5,6 +5,8 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 
+#include "termcolor.hpp"
+
 void CodeGen::optimize_string() {
     for (const auto& val : semantic->ast->function_table | std::views::values) {
         for (auto& expr : val->body) {
@@ -15,8 +17,8 @@ void CodeGen::optimize_string() {
 
 bool CodeGen::generate() {
     // initializing constants
-    for (auto& [name, value] : semantic->ast->constant_table) {
-        if (semantic->ast->is_variable(semantic->ast->global_symbols, name) == SYMBOL_TYPE_STRING) {
+    for (auto& [constant, value] : semantic->ast->constant_table) {
+        if (semantic->ast->is_variable(constant) == SYMBOL_TYPE_STRING) {
             value = std::move(merge_literal_string_operations(std::move(value)));
             auto* variable = new llvm::GlobalVariable(
                 *this->module,
@@ -24,23 +26,18 @@ bool CodeGen::generate() {
                 false,
                 llvm::GlobalValue::ExternalLinkage,
                 llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
-                name
+                constant
             );
-            scoped_symbol_table.back().insert({name, variable});
-            const auto& main = semantic->ast->function_table.equal_range("main").first->second;
-            main->body.insert(main->body.begin(), std::make_unique<BinaryExprAST>(
-                                  '=',
-                                  std::move(std::make_unique<VariableExprAST>(std::move(std::string(name)))),
-                                  std::move(value)));
+            scoped_symbol_table.back().insert({constant, variable});
         } else {
-            scoped_symbol_table.back().insert({name, visit(value)});
+            scoped_symbol_table.back().insert({constant, visit(value)});
         }
     }
 
     // register global variables & main entry
-    for (const auto& symbol : semantic->ast->global_symbols) {
-        if (semantic->ast->constant_table.contains(symbol.first)) continue;
-        switch (symbol.second) {
+    for (const auto& [global, value] : semantic->ast->global_table) {
+        if (semantic->ast->constant_table.contains(global)) continue;
+        switch (semantic->get_type(value)) {
             case SYMBOL_TYPE_INT: {
                 auto* variable = new llvm::GlobalVariable(
                     *this->module,
@@ -48,9 +45,9 @@ bool CodeGen::generate() {
                     false,
                     llvm::GlobalValue::ExternalLinkage,
                     llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)),
-                    symbol.first
+                    global
                 );
-                scoped_symbol_table.back().insert({symbol.first, variable});
+                scoped_symbol_table.back().insert({global, variable});
                 break;
             }
             case SYMBOL_TYPE_FLOAT: {
@@ -60,9 +57,9 @@ bool CodeGen::generate() {
                     false,
                     llvm::GlobalValue::ExternalLinkage,
                     llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)),
-                    symbol.first
+                    global
                 );
-                scoped_symbol_table.back().insert({symbol.first, variable});
+                scoped_symbol_table.back().insert({global, variable});
                 break;
             }
             case SYMBOL_TYPE_STRING: {
@@ -72,9 +69,9 @@ bool CodeGen::generate() {
                     false,
                     llvm::GlobalValue::ExternalLinkage,
                     llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0)),
-                    symbol.first
+                    global
                 );
-                scoped_symbol_table.back().insert({symbol.first, variable});
+                scoped_symbol_table.back().insert({global, variable});
                 break;
             }
         }
@@ -95,10 +92,12 @@ bool CodeGen::generate() {
         llvm::Function* function = module->getFunction(unique_function_name(func_def->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
         scoped_symbol_table.emplace_back();
-        semantic->scoped_symbol_tables.emplace_back();
+        semantic->ast->scoped_symbol_table.emplace_back(&func_def->signature->symbol_table);
+        semantic->scoped_symbol_types.emplace_back();
         lifecycles.push_back({true, {}});
         builder->SetInsertPoint(block);
         build_scoped_symbol_table(func_def->signature->symbol_table);
+
         int index = 0;
         for (const auto& arg : func_def->signature->arguments) {
             function->getArg(index)->setName(arg->name);
@@ -106,9 +105,21 @@ bool CodeGen::generate() {
             index++;
         }
         semantic->scope_function = &func_def->signature;
+
+        if (function->getName() == "main") {
+            for (auto& [constant, value] : semantic->ast->constant_table) {
+                if (semantic->ast->is_variable(constant) == SYMBOL_TYPE_STRING) {
+                    update_variable_value(constant, visit(value));
+                }
+            }
+            for (auto& [constant, value] : semantic->ast->global_table) {
+                update_variable_value(constant, visit(value));
+            }
+        }
         for (const auto& expr : func_def->body) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) {
-                llvm::errs() << "unreachable code\n";
+                std::cerr << termcolor::yellow << "unreachable code at " << function->getName().str() << '\n' <<
+                        termcolor::reset;
                 break;
             }
             visit(expr);
@@ -128,7 +139,8 @@ bool CodeGen::generate() {
         llvm::verifyFunction(*function, &llvm::errs());
         semantic->scope_function = nullptr;
         scoped_symbol_table.pop_back();
-        semantic->scoped_symbol_tables.pop_back();
+        semantic->ast->scoped_symbol_table.pop_back();
+        semantic->scoped_symbol_types.pop_back();
     }
 
     return true;
@@ -174,7 +186,6 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
     }
     if (typeid(*expr) == typeid(BinaryExprAST)) {
         auto& bi_expr = dynamic_cast<const BinaryExprAST&>(*expr);
-        llvm::Value* lhs = visit(bi_expr.lhs);
         llvm::Value* rhs = visit(bi_expr.rhs);
         const SymbolType lhs_type = semantic->get_type(bi_expr.lhs);
         const SymbolType rhs_type = semantic->get_type(bi_expr.rhs);
@@ -185,6 +196,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
             }
             return rhs;
         }
+        llvm::Value* lhs = visit(bi_expr.lhs);
         if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
             llvm::Value* new_lhs = cast_value_to(lhs, SYMBOL_TYPE_STRING);
             llvm::Value* new_rhs = cast_value_to(rhs, SYMBOL_TYPE_STRING);
@@ -195,7 +207,9 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
                 return new_string;
             }
             if (bi_expr.op == TOKEN_EQUALS) {
-                return builder->CreateCall(module->getFunction("ziyue4d_StringEquals"), {new_lhs, new_rhs});
+                return cast_value_to(
+                    builder->CreateCall(module->getFunction("ziyue4d_StringEquals"), {new_lhs, new_rhs}),
+                    SYMBOL_TYPE_INT);
             }
             return nullptr;
         }
@@ -316,7 +330,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         llvm::BasicBlock* post_if_statement = llvm::BasicBlock::Create(*context, "", scope);
         builder->CreateCondBr(condition, statement_true_block, statement_false_block);
         // statement true
-        semantic->scoped_symbol_tables.emplace_back();
+        semantic->scoped_symbol_types.emplace_back();
         scoped_symbol_table.emplace_back();
         build_scoped_symbol_table(if_statement.statement_true_symbol_table);
         builder->SetInsertPoint(statement_true_block);
@@ -331,12 +345,12 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         }
         lifecycles.pop_back();
         scoped_symbol_table.pop_back();
-        semantic->scoped_symbol_tables.pop_back();
+        semantic->scoped_symbol_types.pop_back();
         // statement false
-        semantic->scoped_symbol_tables.emplace_back();
+        semantic->scoped_symbol_types.emplace_back();
         scoped_symbol_table.emplace_back();
-        build_scoped_symbol_table(if_statement.statement_false_symbol_table);
         builder->SetInsertPoint(statement_false_block);
+        build_scoped_symbol_table(if_statement.statement_false_symbol_table);
         lifecycles.push_back({false, {}});
         for (const auto& if_expr : if_statement.statement_false) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
@@ -348,9 +362,42 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         }
         lifecycles.pop_back();
         scoped_symbol_table.pop_back();
-        semantic->scoped_symbol_tables.pop_back();
+        semantic->scoped_symbol_types.pop_back();
 
         builder->SetInsertPoint(post_if_statement);
+    }
+    if (typeid(*expr) == typeid(WhileStatementAST)) {
+        auto& while_statement = dynamic_cast<const WhileStatementAST&>(*expr);
+        llvm::Function* scope = module->getFunction(unique_function_name(*semantic->scope_function));
+        llvm::BasicBlock* pre_while_block = nullptr;
+        if (scope->back().empty()) {
+            pre_while_block = &scope->back();
+        } else {
+            pre_while_block = llvm::BasicBlock::Create(*context, "", scope);
+            builder->CreateBr(pre_while_block);
+            builder->SetInsertPoint(pre_while_block);
+        }
+        llvm::Value* condition = builder->CreateICmpNE(visit(while_statement.condition), builder->getInt32(0));
+        llvm::BasicBlock* statement_true_block = llvm::BasicBlock::Create(*context, "", scope);
+        llvm::BasicBlock* post_while_block = llvm::BasicBlock::Create(*context, "", scope);
+        builder->CreateCondBr(condition, statement_true_block, post_while_block);
+        semantic->scoped_symbol_types.emplace_back();
+        scoped_symbol_table.emplace_back();
+        builder->SetInsertPoint(statement_true_block);
+        build_scoped_symbol_table(while_statement.statement_true_symbol_table);
+        lifecycles.push_back({false, {}});
+        for (const auto& if_expr : while_statement.statement_true) {
+            if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
+            visit(if_expr);
+        }
+        if (builder->GetInsertBlock()->getTerminator() == nullptr) {
+            release_lifecycle_resources();
+            builder->CreateBr(pre_while_block);
+        }
+        lifecycles.pop_back();
+        scoped_symbol_table.pop_back();
+        semantic->scoped_symbol_types.pop_back();
+        builder->SetInsertPoint(post_while_block);
     }
     return nullptr;
 }
@@ -476,30 +523,33 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
 void CodeGen::update_variable_value(const std::string& name, llvm::Value* value) {
     for (auto& table : std::ranges::reverse_view(scoped_symbol_table)) {
         if (table.contains(name)) {
-            table.insert_or_assign(name, value);
+            for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
+                if (type_table.contains(name) && type_table.at(name) == SYMBOL_TYPE_STRING && type_table != semantic->
+                    scoped_symbol_types.front()) {
+                    table.insert_or_assign(name, value);
+                    return;
+                }
+            }
+            builder->CreateStore(value, table.at(name));
             return;
         }
-    }
-    if (scoped_symbol_table.front().contains(name)) {
-        // global variable
-        const auto global_variable = llvm::cast<llvm::GlobalVariable>(scoped_symbol_table.front().at(name));
-        builder->CreateStore(value, global_variable);
     }
 }
 
 llvm::Value* CodeGen::find_variable_value(const std::string& name) {
     for (const auto& table : std::ranges::reverse_view(scoped_symbol_table)) {
-        if (table.contains(name)) return table.at(name);
+        if (table.contains(name)) {
+            for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
+                if (type_table.contains(name)) {
+                    if (type_table.at(name) == SYMBOL_TYPE_STRING) return table.at(name);
+                    return builder->CreateLoad(symbol_type_to_type(type_table.at(name)), table.at(name));
+                }
+            }
+        }
     }
-    if (semantic->ast->constant_table.contains(name) &&
-        semantic->ast->is_variable(semantic->ast->global_symbols, name) != SYMBOL_TYPE_STRING) {
+    if (semantic->ast->constant_table.contains(name) && semantic->ast->is_variable(name) != SYMBOL_TYPE_STRING) {
         // constant
         return scoped_symbol_table.front().at(name);
-    }
-    if (scoped_symbol_table.front().contains(name)) {
-        // global variable
-        auto global_variable = llvm::cast<llvm::GlobalVariable>(scoped_symbol_table.front().at(name));
-        return builder->CreateLoad(global_variable->getValueType(), global_variable);
     }
 }
 
@@ -516,7 +566,10 @@ void CodeGen::release_lifecycle_resources(const bool is_function_return, const l
 
 llvm::Value* CodeGen::build_literal_string(const std::string& str) {
     static std::unordered_map<std::string, llvm::Constant*> global_string_ptrs = {};
-    if (!global_string_ptrs.contains(str)) global_string_ptrs.insert({str, builder->CreateGlobalStringPtr(str)});
+    if (!global_string_ptrs.contains(str)) {
+        llvm::GlobalVariable* global_string = builder->CreateGlobalString(str);
+        global_string_ptrs.insert({str, global_string});
+    }
     llvm::Value* built_string = builder->CreateCall(module->getFunction("ziyue4d_create_string__"),
                                                     {global_string_ptrs.at(str)});
     lifecycles.back().values.insert(built_string);
@@ -565,26 +618,26 @@ std::string CodeGen::literal_to_string(const ExprAST& expr) {
 }
 
 void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table) {
-    for (const auto& symbol : symbol_table) {
-        if (semantic->ast->is_variable(symbol_table, symbol.first)) {
-            semantic->scoped_symbol_tables.back().emplace(symbol.first, symbol.second);
-            switch (symbol.second) {
+    for (const auto& [name, type] : symbol_table) {
+        if (semantic->ast->is_variable(name)) {
+            semantic->scoped_symbol_types.back().emplace(name, type);
+            switch (type) {
                 case SYMBOL_TYPE_INT:
                     scoped_symbol_table.back().insert({
-                        symbol.first, llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true))
+                        name, builder->CreateAlloca(builder->getInt32Ty(), nullptr, name)
                     });
                     break;
                 case SYMBOL_TYPE_FLOAT:
                     scoped_symbol_table.back().insert({
-                        symbol.first, llvm::ConstantFP::get(*context, llvm::APFloat(0.0f))
+                        name, builder->CreateAlloca(builder->getFloatTy(), nullptr, name)
                     });
                     break;
                 case SYMBOL_TYPE_STRING:
-                    scoped_symbol_table.back().insert({symbol.first, build_literal_string("")});
+                    scoped_symbol_table.back().insert({name, build_literal_string("")});
                     break;
                 case SYMBOL_TYPE_POINTER:
                     scoped_symbol_table.back().insert({
-                        symbol.first, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0))
+                        name, llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0))
                     });
             }
         }

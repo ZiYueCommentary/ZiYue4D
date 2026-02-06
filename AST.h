@@ -10,7 +10,7 @@ public:
     virtual ~ExprAST() = default;
 };
 
-using ConstantTable = std::unordered_map<std::string, std::unique_ptr<ExprAST>>;
+using GlobalTable = std::unordered_map<std::string, std::unique_ptr<ExprAST>>;
 
 struct FunctionArgument {
     const std::string name;
@@ -160,6 +160,19 @@ public:
     friend class CodeGen;
 };
 
+class WhileStatementAST : public ExprAST {
+public:
+    WhileStatementAST(std::unique_ptr<ExprAST> condition) : condition(std::move(condition)) {
+    }
+
+    std::unique_ptr<ExprAST> condition;
+    std::vector<std::unique_ptr<ExprAST>> statement_true;
+    SymbolTable statement_true_symbol_table;
+
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
+
 using FunctionTable = std::unordered_multimap<std::string, std::unique_ptr<FunctionAST>>;
 using ExternFunctionTable = std::unordered_map<std::string, std::unique_ptr<FunctionSignatureAST>>;
 
@@ -170,17 +183,21 @@ public:
     bool parse();
 
 private:
-    std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, SymbolTable& symbol_table, bool function_first = true);
-    std::unique_ptr<ExprAST> parse_primary_expression(SymbolTable& symbol_table, bool function_first = true);
-    std::unique_ptr<CallExprAST> parse_call_expression(std::string callee, SymbolTable& symbol_table);
+    std::unique_ptr<ExprAST> parse_expression(std::unique_ptr<ExprAST> lhs, bool function_first = true);
+    std::unique_ptr<ExprAST> parse_primary_expression(bool function_first = true);
+    std::unique_ptr<CallExprAST> parse_call_expression(std::string callee);
     std::unique_ptr<FunctionSignatureAST> parse_function_signature(bool is_extern = false);
     void parse_function_definition();
-    std::unique_ptr<IfStatementAST> parse_if_statement(SymbolTable& symbol_table);
-    int is_variable(const SymbolTable& symbol_table, const std::string& name);
+    std::unique_ptr<IfStatementAST> parse_if_statement();
+    std::unique_ptr<WhileStatementAST> parse_while_statement();
+    int is_variable(const std::string& name);
+    int is_variable(SymbolTable& symbol_table, const std::string& name);
+
 
     std::unique_ptr<Lex> lex;
-    SymbolTable global_symbols;
-    ConstantTable constant_table;
+    std::vector<SymbolTable*> scoped_symbol_table;
+    GlobalTable constant_table;
+    GlobalTable global_table;
     FunctionTable function_table;
     ExternFunctionTable extern_function_table;
     int token = 0;
