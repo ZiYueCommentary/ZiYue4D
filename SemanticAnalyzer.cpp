@@ -30,13 +30,13 @@ bool SemanticAnalyzer::analyze() {
     for (auto& [name, value] : ast->global_table) {
         scoped_symbol_types.back().emplace(name, static_cast<SymbolType>(ast->is_variable(name)));
         try {
-            if (value != nullptr && get_type(value) != ast->is_variable(name)) {
-                std::cerr << termcolor::red << "mismatch type at constant " << name << " definition\n" <<
+            if (value != nullptr && !can_convert_to(get_type(value), static_cast<SymbolType>(ast->is_variable(name)))) {
+                std::cerr << termcolor::red << "mismatch type at global " << name << " definition\n" <<
                         termcolor::reset;
                 occur_errors = true;
             }
         } catch (semantic_exception& e) {
-            std::cerr << termcolor::red << "invalid syntax at constant " << name << " definition: " << e.
+            std::cerr << termcolor::red << "invalid syntax at global " << name << " definition: " << e.
                     what() << '\n' << termcolor::reset;
             occur_errors = true;
         }
@@ -146,8 +146,9 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
             case '&': {
                 const auto& ident = dynamic_cast<VariableExprAST&>(*call.expr);
                 // TODO variable
-                if (!ast->scoped_symbol_table.front()->contains(ident.name)) throw semantic_exception(
-                    "unknown identifier");
+                if (!ast->scoped_symbol_table.front()->contains(ident.name))
+                    throw semantic_exception(
+                        "unknown identifier");
                 const auto candidates = ast->function_table.equal_range(ident.name);
                 if (std::distance(candidates.first, candidates.second) > 1)
                     std::cerr << termcolor::yellow <<
@@ -281,7 +282,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
             auto& symbol_table = if_statement.statement_false_symbol_table;
             ast->scoped_symbol_table.emplace_back(&symbol_table);
             for (
-                 const auto& [name, type] : symbol_table) {
+                const auto& [name, type] : symbol_table) {
                 if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
             }
             for (auto& false_expr : if_statement.statement_false) {

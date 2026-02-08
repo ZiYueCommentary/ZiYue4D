@@ -29,6 +29,7 @@ private:
     llvm::FunctionType* create_function_type(const std::unique_ptr<FunctionSignatureAST>& signature);
     [[nodiscard]] llvm::Type* token_to_type(Token token) const;
     [[nodiscard]] llvm::Type* symbol_type_to_type(SymbolType type) const;
+    // [[nodiscard]] SymbolType llvm_value_symbol_type(llvm::Value* value) const;
     std::string unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature);
     void update_variable_value(const std::string& name, llvm::Value* value);
     llvm::Value* find_variable_value(const std::string& name);
@@ -36,6 +37,7 @@ private:
     llvm::Value* build_literal_string(const std::string& str);
     std::unique_ptr<ExprAST> merge_literal_string_operations(std::unique_ptr<ExprAST> expr);
     bool is_literal_expression(const ExprAST& expr);
+    bool is_non_string_literal_value(const std::unique_ptr<ExprAST>& expr) const;
     std::string literal_to_string(const ExprAST& expr);
     void build_scoped_symbol_table(const SymbolTable& symbol_table);
     std::string to_lower_string(const std::string& str);

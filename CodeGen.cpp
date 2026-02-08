@@ -37,14 +37,18 @@ bool CodeGen::generate() {
     // register global variables & main entry
     for (const auto& [global, value] : semantic->ast->global_table) {
         if (semantic->ast->constant_table.contains(global)) continue;
-        switch (semantic->get_type(value)) {
+        switch (semantic->scoped_symbol_types.front().at(global)) {
             case SYMBOL_TYPE_INT: {
                 auto* variable = new llvm::GlobalVariable(
                     *this->module,
                     llvm::Type::getInt32Ty(*context),
                     false,
                     llvm::GlobalValue::ExternalLinkage,
-                    llvm::ConstantInt::get(*context, llvm::APInt(32, 0, true)),
+                    llvm::ConstantInt::get(
+                        *context, llvm::APInt(
+                            32, is_non_string_literal_value(value) && semantic->get_type(value) == SYMBOL_TYPE_INT
+                                    ? llvm::dyn_cast<llvm::ConstantInt>(visit(value))->getZExtValue()
+                                    : 0, true)),
                     global
                 );
                 scoped_symbol_table.back().insert({global, variable});
@@ -56,7 +60,11 @@ bool CodeGen::generate() {
                     llvm::Type::getFloatTy(*context),
                     false,
                     llvm::GlobalValue::ExternalLinkage,
-                    llvm::ConstantFP::get(*context, llvm::APFloat(0.0f)),
+                    llvm::ConstantFP::get(*context, llvm::APFloat(
+                                              is_non_string_literal_value(value) && semantic->get_type(value) ==
+                                              SYMBOL_TYPE_FLOAT
+                                                  ? llvm::dyn_cast<llvm::ConstantFP>(visit(value))->getValueAPF().convertToFloat()
+                                                  : 0.0f)),
                     global
                 );
                 scoped_symbol_table.back().insert({global, variable});
@@ -112,8 +120,10 @@ bool CodeGen::generate() {
                     update_variable_value(constant, visit(value));
                 }
             }
-            for (auto& [constant, value] : semantic->ast->global_table) {
-                update_variable_value(constant, visit(value));
+            for (auto& [global, value] : semantic->ast->global_table) {
+                const SymbolType type = semantic->scoped_symbol_types.front().at(global);
+                if (is_non_string_literal_value(value) && semantic->get_type(value) == type) continue;
+                update_variable_value(global, cast_value_to(visit(value), type));
             }
         }
         for (const auto& expr : func_def->body) {
@@ -482,6 +492,15 @@ llvm::Type* CodeGen::symbol_type_to_type(SymbolType type) const {
     }
 }
 
+// SymbolType CodeGen::llvm_value_symbol_type(llvm::Value* value) const {
+//     switch (value->getType()->getTypeID()) {
+//         case llvm::Type::IntegerTyID: return SYMBOL_TYPE_INT;
+//         case llvm::Type::FloatTyID: return SYMBOL_TYPE_FLOAT;
+//         case llvm::Type::PointerTyID: return SYMBOL_TYPE_POINTER;
+//         default: throw codegen_exception("unknown llvm value type");
+//     }
+//}
+
 std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature) {
     static std::map<void*, std::string> cache = {}; // This is an unsafe practice.
     if (signature->name == "main") return "main";
@@ -602,6 +621,19 @@ bool CodeGen::is_literal_expression(const ExprAST& expr) {
     return ty == typeid(StringExprAST) || ty == typeid(IntegerExprAST) || ty == typeid(FloatExprAST);
 }
 
+bool CodeGen::is_non_string_literal_value(const std::unique_ptr<ExprAST>& expr) const {
+    if (typeid(*expr) == typeid(IntegerExprAST) || typeid(*expr) == typeid(FloatExprAST)) return true;
+    if (typeid(*expr) == typeid(BinaryExprAST)) {
+        const auto& bi_expr = dynamic_cast<const BinaryExprAST&>(*expr);
+        return is_non_string_literal_value(bi_expr.lhs) && is_non_string_literal_value(bi_expr.rhs);
+    }
+    if (typeid(*expr) == typeid(UnaryExprAST)) {
+        const auto& ary_expr = dynamic_cast<const UnaryExprAST&>(*expr);
+        return is_non_string_literal_value(ary_expr.expr);
+    }
+    return false;
+}
+
 std::string CodeGen::literal_to_string(const ExprAST& expr) {
     if (typeid(expr) == typeid(StringExprAST)) {
         auto& str = dynamic_cast<const StringExprAST&>(expr);
@@ -615,6 +647,7 @@ std::string CodeGen::literal_to_string(const ExprAST& expr) {
         auto& flt = dynamic_cast<const FloatExprAST&>(expr);
         return std::to_string(flt.value);
     }
+    return std::string();
 }
 
 void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table) {

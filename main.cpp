@@ -8,9 +8,7 @@ int main(int argc, char** argv) {
     // Define options
     std::string input, output, std;
     bool show_progress = false;
-#ifndef NDEBUG
-    input = "example.sb"; output = "main.ll"; std = "std.sb"; show_progress = true;
-#else
+
     CLI::Option* option_input = app.add_option("-i,--input", input, "Input source file")->check(CLI::ExistingFile)->
             required(true);
     CLI::Option* option_output = app.add_option("-o,--output", output, "Output source file")->required(false);
@@ -19,7 +17,6 @@ int main(int argc, char** argv) {
     CLI::Option* option_progress = app.add_flag("-p,--progress", show_progress, "Show progress")->required(false);
 
     CLI11_PARSE(app, argc, argv);
-#endif
 
     if (show_progress) std::cout << "Compiling...\n";
     AST ast(std::make_unique<Lex>(input));
