@@ -63,7 +63,8 @@ bool CodeGen::generate() {
                     llvm::ConstantFP::get(*context, llvm::APFloat(
                                               is_non_string_literal_value(value) && semantic->get_type(value) ==
                                               SYMBOL_TYPE_FLOAT
-                                                  ? llvm::dyn_cast<llvm::ConstantFP>(visit(value))->getValueAPF().convertToFloat()
+                                                  ? llvm::dyn_cast<llvm::ConstantFP>(visit(value))->getValueAPF().
+                                                  convertToFloat()
                                                   : 0.0f)),
                     global
                 );
@@ -95,6 +96,54 @@ bool CodeGen::generate() {
                                unique_function_name(external_function->signature), &*module);
     }
 
+    // Initialing global variables...
+    {
+        const auto constructor = llvm::Function::Create(
+            llvm::FunctionType::get(llvm::Type::getVoidTy(*context), {}, false), llvm::Function::InternalLinkage, "",
+            &*module);
+        llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", constructor);
+        builder->SetInsertPoint(block);
+        lifecycles.push_back({false, {}});
+        for (auto& [constant, value] : semantic->ast->constant_table) {
+            if (semantic->ast->is_variable(constant) == SYMBOL_TYPE_STRING) {
+                update_variable_value(constant, visit(value));
+            }
+        }
+        for (auto& [global, value] : semantic->ast->global_table) {
+            const SymbolType type = semantic->scoped_symbol_types.front().at(global);
+            if (is_non_string_literal_value(value) && semantic->get_type(value) == type) continue;
+            update_variable_value(global, cast_value_to(visit(value), type));
+        }
+        builder->CreateRetVoid();
+
+        // Creating @llvm.global_ctors...
+        llvm::StructType* ctorStructTy = llvm::StructType::get(
+            llvm::Type::getInt32Ty(*context),
+            llvm::PointerType::get(constructor->getType(), 0),
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context), 0)
+        );
+
+        llvm::Constant* ctorElem = llvm::ConstantStruct::get(
+            ctorStructTy,
+            {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 65535),
+                constructor,
+                llvm::ConstantPointerNull::get(llvm::PointerType::get(*context, 0))
+            }
+        );
+
+        llvm::ArrayType* arrayTy = llvm::ArrayType::get(ctorStructTy, 1);
+
+        auto* globalCtors = new llvm::GlobalVariable(
+            *module,
+            arrayTy,
+            false,
+            llvm::GlobalValue::AppendingLinkage,
+            llvm::ConstantArray::get(arrayTy, {ctorElem}),
+            "llvm.global_ctors"
+        );
+    }
+
     // register function definitions
     for (const auto& func_def : semantic->ast->function_table | std::views::values) {
         llvm::Function* function = module->getFunction(unique_function_name(func_def->signature));
@@ -114,18 +163,6 @@ bool CodeGen::generate() {
         }
         semantic->scope_function = &func_def->signature;
 
-        if (function->getName() == "main") {
-            for (auto& [constant, value] : semantic->ast->constant_table) {
-                if (semantic->ast->is_variable(constant) == SYMBOL_TYPE_STRING) {
-                    update_variable_value(constant, visit(value));
-                }
-            }
-            for (auto& [global, value] : semantic->ast->global_table) {
-                const SymbolType type = semantic->scoped_symbol_types.front().at(global);
-                if (is_non_string_literal_value(value) && semantic->get_type(value) == type) continue;
-                update_variable_value(global, cast_value_to(visit(value), type));
-            }
-        }
         for (const auto& expr : func_def->body) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) {
                 std::cerr << termcolor::yellow << "unreachable code at " << function->getName().str() << '\n' <<
@@ -543,8 +580,8 @@ void CodeGen::update_variable_value(const std::string& name, llvm::Value* value)
     for (auto& table : std::ranges::reverse_view(scoped_symbol_table)) {
         if (table.contains(name)) {
             for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
-                if (type_table.contains(name) && type_table.at(name) == SYMBOL_TYPE_STRING && type_table != semantic->
-                    scoped_symbol_types.front()) {
+                if (type_table.contains(name) && type_table.at(name) == SYMBOL_TYPE_STRING &&
+                    type_table != semantic->scoped_symbol_types.front()) {
                     table.insert_or_assign(name, value);
                     return;
                 }
@@ -560,7 +597,9 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name) {
         if (table.contains(name)) {
             for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
                 if (type_table.contains(name)) {
-                    if (type_table.at(name) == SYMBOL_TYPE_STRING) return table.at(name);
+                    if (type_table.at(name) == SYMBOL_TYPE_STRING &&
+                        type_table != semantic->scoped_symbol_types.front())
+                        return table.at(name);
                     return builder->CreateLoad(symbol_type_to_type(type_table.at(name)), table.at(name));
                 }
             }
