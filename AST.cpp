@@ -13,11 +13,11 @@ const std::unordered_map<int, int> op_precedence = {
 
 bool AST::parse() {
     bool occur_errors = false;
-    scoped_symbol_table.push_back(new SymbolTable{}); // global
-    scoped_symbol_table.front()->insert({"main", SYMBOL_TYPE_FUNCTION});
+    scoped_symbol_table_layer.emplace_back(new SymbolTable{}, SYMBOL_TABLE_TYPE_GLOBAL); // global
+    scoped_symbol_table_layer.front().symbol_table->insert({"main", SYMBOL_TYPE_FUNCTION});
     auto signature = std::make_unique<FunctionSignatureAST>("main", SYMBOL_TYPE_INT);
     auto function = std::make_unique<FunctionAST>(std::move(signature));
-    scoped_symbol_table.emplace_back(&function->signature->symbol_table); // main local
+    scoped_symbol_table_layer.emplace_back(&function->signature->symbol_table); // main local
     function_table.emplace("main", std::move(function));
     const auto& main = function_table.equal_range("main").first->second;
     while (true) {
@@ -33,6 +33,8 @@ bool AST::parse() {
                 parse_function_signature(true);
                 continue;
             }
+            if (token == TOKEN_EXIT || token == TOKEN_CONTINUE)
+                throw ast_exception("exit or continue can be used in a while statement only");
             std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression());
             main->body.push_back(std::move(parse_expression(std::move(lhs))));
         } catch (ast_exception& e) {
@@ -52,7 +54,7 @@ bool AST::parse() {
             occur_errors = true;
         }
     }
-    scoped_symbol_table.pop_back(); // main local
+    scoped_symbol_table_layer.pop_back(); // main local
 
     return occur_errors;
 }
@@ -61,13 +63,13 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(bool function_first) {
     std::unique_ptr<ExprAST> lhs = nullptr;
     switch (token) {
         case TOKEN_GLOBAL:
-            if (scoped_symbol_table.size() > 2) {
+            if (scoped_symbol_table_layer.size() > 2) {
                 throw ast_exception("global cannot be defined in function");
             }
             do {
                 token = lex->get_token();
                 std::string identifier = std::move(lex->identifier);
-                if (is_variable(*scoped_symbol_table.front(), identifier)) {
+                if (is_variable(scoped_symbol_table_layer.front().symbol_table, identifier)) {
                     throw ast_exception("duplicate global variable definition");
                 }
                 Token type = TOKEN_TYPE_INT;
@@ -81,11 +83,11 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(bool function_first) {
                         token = lex->get_token();
                 }
 
-                scoped_symbol_table.front()->insert({identifier, token_to_type(type)});
+                scoped_symbol_table_layer.front().symbol_table->insert({identifier, token_to_type(type)});
                 if (token == '=') {
                     token = lex->get_token();
-                    global_table.emplace(
-                        identifier, std::move(parse_expression(parse_primary_expression(false), false)));
+                    global_table.emplace(identifier,
+                                         std::move(parse_expression(parse_primary_expression(false), false)));
                 } else {
                     global_table.emplace(identifier, nullptr);
                 }
@@ -100,14 +102,14 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(bool function_first) {
             } while (token == ',');
             break;
         case TOKEN_CONST: {
-            if (scoped_symbol_table.size() > 2) {
+            if (scoped_symbol_table_layer.size() > 2) {
                 throw ast_exception("constant cannot be defined in function");
             }
 
             do {
                 token = lex->get_token();
                 std::string identifier = std::move(lex->identifier);
-                if (is_variable(*scoped_symbol_table.front(), identifier)) {
+                if (is_variable(scoped_symbol_table_layer.front().symbol_table, identifier)) {
                     throw ast_exception("duplicate constant definition");
                 }
                 Token type = TOKEN_TYPE_INT;
@@ -125,7 +127,7 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(bool function_first) {
 
                 if (token != '=') throw ast_exception("missing constant value");
                 token = lex->get_token();
-                scoped_symbol_table.front()->insert({identifier, token_to_type(type)});
+                scoped_symbol_table_layer.front().symbol_table->insert({identifier, token_to_type(type)});
                 constant_table.emplace(identifier, std::move(parse_expression(parse_primary_expression(false), false)));
                 lhs = std::make_unique<VariableExprAST>(std::move(identifier));
             } while (token == ',');
@@ -138,32 +140,32 @@ std::unique_ptr<ExprAST> AST::parse_primary_expression(bool function_first) {
             switch (token) {
                 case TOKEN_TYPE_FLOAT:
                     if (!is_variable(identifier)) {
-                        scoped_symbol_table.back()->insert({identifier, SYMBOL_TYPE_FLOAT});
+                        scoped_symbol_table_layer.back().symbol_table->insert({identifier, SYMBOL_TYPE_FLOAT});
                     }
                     token = lex->get_token();
                     break;
                 case TOKEN_TYPE_STRING:
                     if (!is_variable(identifier)) {
-                        scoped_symbol_table.back()->insert({identifier, SYMBOL_TYPE_STRING});
+                        scoped_symbol_table_layer.back().symbol_table->insert({identifier, SYMBOL_TYPE_STRING});
                     }
                     token = lex->get_token();
                     break;
                 case TOKEN_TYPE_POINTER:
                     if (!is_variable(identifier)) {
-                        scoped_symbol_table.back()->insert({identifier, SYMBOL_TYPE_POINTER});
+                        scoped_symbol_table_layer.back().symbol_table->insert({identifier, SYMBOL_TYPE_POINTER});
                     }
                     token = lex->get_token();
                     break;
                 case TOKEN_TYPE_INT:
                     if (!is_variable(identifier)) {
-                        scoped_symbol_table.back()->insert({identifier, SYMBOL_TYPE_INT});
+                        scoped_symbol_table_layer.back().symbol_table->insert({identifier, SYMBOL_TYPE_INT});
                     }
                     token = lex->get_token();
                 default:
                     if (token == '=') {
                         const int symbol_type = is_variable(identifier);
                         if (symbol_type == 0) {
-                            scoped_symbol_table.back()->insert({identifier, SYMBOL_TYPE_INT});
+                            scoped_symbol_table_layer.back().symbol_table->insert({identifier, SYMBOL_TYPE_INT});
                         } else if (symbol_type != token_to_type(type)) {
                             throw ast_exception("mismatched variable type");
                         }
@@ -277,7 +279,7 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_exte
             std::make_unique<FunctionArgument>(std::move(arg_name), type, std::move(default_value)));
     } while (token == ',');
     if (token != ')') throw ast_exception("expecting closing parenthesis");
-    scoped_symbol_table.front()->insert({non_case_name, SYMBOL_TYPE_FUNCTION});
+    scoped_symbol_table_layer.front().symbol_table->insert({non_case_name, SYMBOL_TYPE_FUNCTION});
     if (is_extern) {
         if (extern_function_table.contains(name)) throw ast_exception("duplicate extern function");
         extern_function_table.emplace(non_case_name, std::move(function));
@@ -302,7 +304,7 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_exte
 
 void AST::parse_function_definition() {
     auto function = std::make_unique<FunctionAST>(std::move(parse_function_signature()));
-    scoped_symbol_table.emplace_back(&function->signature->symbol_table);
+    scoped_symbol_table_layer.emplace_back(&function->signature->symbol_table, SYMBOL_TABLE_TYPE_FUNCTION);
     this->token = lex->get_token();
     do {
         if (token == TOKEN_EOF) throw ast_exception("expecting end function");
@@ -310,6 +312,9 @@ void AST::parse_function_definition() {
         if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in function");
         if (token == TOKEN_CONST) throw ast_exception("cannot define constant in function");
         if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in function");
+        if (token == TOKEN_EXIT || token == TOKEN_CONTINUE)
+            throw ast_exception(
+                "exit or continue can be used in a while statement only");
         if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_FUNCTION) { break; }
         if (is_end_of_stmt(token)) {
             this->token = lex->get_token();
@@ -319,7 +324,7 @@ void AST::parse_function_definition() {
         function->body.push_back(std::move(parse_expression(std::move(lhs))));
     } while (true);
     function_table.emplace(function->signature->name, std::move(function));
-    scoped_symbol_table.pop_back();
+    scoped_symbol_table_layer.pop_back();
 }
 
 std::unique_ptr<IfStatementAST> AST::parse_if_statement() {
@@ -328,37 +333,67 @@ std::unique_ptr<IfStatementAST> AST::parse_if_statement() {
     if (this->token == TOKEN_THEN) this->token = lex->get_token();
     std::unique_ptr<IfStatementAST> statement = std::make_unique<IfStatementAST>(std::move(condition));
     if (token != TOKEN_LINE_FEED) {
-        scoped_symbol_table.emplace_back(&statement->statement_true_symbol_table);
+        scoped_symbol_table_layer.emplace_back(&statement->statement_true_symbol_table, SYMBOL_TABLE_TYPE_IF);
         do {
             if (this->token == TOKEN_ELSE) {
                 this->token = lex->get_token();
-                scoped_symbol_table.emplace_back(&statement->statement_false_symbol_table);
+                scoped_symbol_table_layer.emplace_back(&statement->statement_false_symbol_table, SYMBOL_TABLE_TYPE_IF);
                 do {
                     statement->statement_false.push_back(parse_expression(parse_primary_expression()));
                     if (token == TOKEN_COLON) this->token = lex->get_token();
                 } while (token != TOKEN_LINE_FEED && token != TOKEN_EOF);
-                scoped_symbol_table.pop_back();
+                scoped_symbol_table_layer.pop_back();
                 break;
             }
             if (this->token == TOKEN_ELSE_IF) {
-                scoped_symbol_table.emplace_back(&statement->statement_false_symbol_table);
+                scoped_symbol_table_layer.emplace_back(&statement->statement_false_symbol_table, SYMBOL_TABLE_TYPE_IF);
                 statement->statement_false.push_back(parse_if_statement());
-                scoped_symbol_table.pop_back();
+                scoped_symbol_table_layer.pop_back();
                 break;
+            }
+            if (token == TOKEN_EXIT || token == TOKEN_CONTINUE) {
+                const size_t while_count = std::count_if(scoped_symbol_table_layer.rbegin(), scoped_symbol_table_layer.rend(),
+                                                      [](SymbolTableLayer layer) {
+                                                          return layer.layer_type == SYMBOL_TABLE_TYPE_WHILE;
+                                                      });
+                if (while_count == 0) throw ast_exception("exit or continue can be used in a while statement only");
+                if (token == TOKEN_EXIT) {
+                    statement->statement_true.push_back(std::make_unique<ExitAST>());
+                }
+                if (token == TOKEN_CONTINUE) {
+                    statement->statement_true.push_back(std::make_unique<ContinueAST>());
+                }
+                this->token = lex->get_token();
+                continue;
             }
             statement->statement_true.push_back(parse_expression(parse_primary_expression()));
             if (token == TOKEN_COLON) this->token = lex->get_token();
         } while (token != TOKEN_LINE_FEED && token != TOKEN_EOF);
-        scoped_symbol_table.pop_back();
+        scoped_symbol_table_layer.pop_back();
         return statement;
     }
-    scoped_symbol_table.emplace_back(&statement->statement_true_symbol_table);
+    scoped_symbol_table_layer.emplace_back(&statement->statement_true_symbol_table, SYMBOL_TABLE_TYPE_IF);
     do {
         if (token == TOKEN_EOF) throw ast_exception("expecting endif");
         if (token == TOKEN_FUNCTION) throw ast_exception("cannot define function in if statement");
         if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in if statement");
         if (token == TOKEN_CONST) throw ast_exception("cannot define constant in if statement");
         if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in if statement");
+        if (token == TOKEN_EXIT || token == TOKEN_CONTINUE) {
+            const size_t while_count = std::count_if(scoped_symbol_table_layer.rbegin(), scoped_symbol_table_layer.rend(),
+                                                  [](SymbolTableLayer layer) {
+                                                      return layer.layer_type == SYMBOL_TABLE_TYPE_WHILE;
+                                                  });
+            if (while_count == 0) throw ast_exception("exit or continue can be used in a while statement only");
+            if (token == TOKEN_EXIT) {
+                statement->statement_true.push_back(std::make_unique<ExitAST>());
+            }
+            if (token == TOKEN_CONTINUE) {
+                statement->statement_true.push_back(std::make_unique<ContinueAST>());
+            }
+            this->token = lex->get_token();
+            continue;
+        }
         if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_IF) { break; }
         if (is_end_of_stmt(token)) {
             this->token = lex->get_token();
@@ -366,14 +401,14 @@ std::unique_ptr<IfStatementAST> AST::parse_if_statement() {
         }
         statement->statement_true.push_back(parse_expression(parse_primary_expression()));
     } while (this->token != TOKEN_ELSE && this->token != TOKEN_ELSE_IF && this->token != TOKEN_ENDIF);
-    scoped_symbol_table.pop_back();
+    scoped_symbol_table_layer.pop_back();
     if (this->token == TOKEN_ELSE_IF) {
-        scoped_symbol_table.emplace_back(&statement->statement_false_symbol_table);
+        scoped_symbol_table_layer.emplace_back(&statement->statement_false_symbol_table, SYMBOL_TABLE_TYPE_IF);
         statement->statement_false.push_back(parse_if_statement());
-        scoped_symbol_table.pop_back();
+        scoped_symbol_table_layer.pop_back();
     } else {
         if (this->token == TOKEN_ELSE) {
-            scoped_symbol_table.emplace_back(&statement->statement_false_symbol_table);
+            scoped_symbol_table_layer.emplace_back(&statement->statement_false_symbol_table, SYMBOL_TABLE_TYPE_IF);
             this->token = lex->get_token();
             do {
                 if (token == TOKEN_EOF) throw ast_exception("expecting endif");
@@ -381,6 +416,22 @@ std::unique_ptr<IfStatementAST> AST::parse_if_statement() {
                 if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in if statement");
                 if (token == TOKEN_CONST) throw ast_exception("cannot define constant in if statement");
                 if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in if statement");
+                if (token == TOKEN_EXIT || token == TOKEN_CONTINUE) {
+                    const size_t while_count = std::count_if(scoped_symbol_table_layer.rbegin(),
+                                                          scoped_symbol_table_layer.rend(),
+                                                          [](SymbolTableLayer layer) {
+                                                              return layer.layer_type == SYMBOL_TABLE_TYPE_WHILE;
+                                                          });
+                    if (while_count == 0) throw ast_exception("exit or continue can be used in a while statement only");
+                    if (token == TOKEN_EXIT) {
+                        statement->statement_true.push_back(std::make_unique<ExitAST>());
+                    }
+                    if (token == TOKEN_CONTINUE) {
+                        statement->statement_true.push_back(std::make_unique<ContinueAST>());
+                    }
+                    this->token = lex->get_token();
+                    continue;
+                }
                 if (token == TOKEN_END && (this->token = lex->get_token()) == TOKEN_IF) { break; }
                 if (is_end_of_stmt(token)) {
                     this->token = lex->get_token();
@@ -388,7 +439,7 @@ std::unique_ptr<IfStatementAST> AST::parse_if_statement() {
                 }
                 statement->statement_false.push_back(parse_expression(parse_primary_expression()));
             } while (this->token != TOKEN_ELSE && this->token != TOKEN_ELSE_IF && this->token != TOKEN_ENDIF);
-            scoped_symbol_table.pop_back();
+            scoped_symbol_table_layer.pop_back();
         }
 
         if (this->token != TOKEN_ENDIF) {
@@ -406,28 +457,38 @@ std::unique_ptr<WhileStatementAST> AST::parse_while_statement() {
     if (this->token == TOKEN_THEN) this->token = lex->get_token();
     std::unique_ptr<WhileStatementAST> statement = std::make_unique<WhileStatementAST>(std::move(condition));
     if (token != TOKEN_LINE_FEED) {
-        scoped_symbol_table.emplace_back(&statement->statement_true_symbol_table);
+        scoped_symbol_table_layer.emplace_back(&statement->statement_true_symbol_table, SYMBOL_TABLE_TYPE_WHILE);
         do {
             statement->statement_true.push_back(parse_expression(parse_primary_expression()));
             if (token == TOKEN_COLON) this->token = lex->get_token();
         } while (token != TOKEN_LINE_FEED && token != TOKEN_EOF);
-        scoped_symbol_table.pop_back();
+        scoped_symbol_table_layer.pop_back();
         return statement;
     }
-    scoped_symbol_table.emplace_back(&statement->statement_true_symbol_table);
+    scoped_symbol_table_layer.emplace_back(&statement->statement_true_symbol_table, SYMBOL_TABLE_TYPE_WHILE);
     do {
         if (token == TOKEN_EOF) throw ast_exception("expecting wend");
         if (token == TOKEN_FUNCTION) throw ast_exception("cannot define function in while statement");
         if (token == TOKEN_EXTERN) throw ast_exception("cannot define extern function in while statement");
         if (token == TOKEN_CONST) throw ast_exception("cannot define constant in while statement");
         if (token == TOKEN_GLOBAL) throw ast_exception("cannot define global in while statement");
+        if (token == TOKEN_EXIT) {
+            statement->statement_true.push_back(std::make_unique<ExitAST>());
+            this->token = lex->get_token();
+            continue;
+        }
+        if (token == TOKEN_CONTINUE) {
+            statement->statement_true.push_back(std::make_unique<ContinueAST>());
+            this->token = lex->get_token();
+            continue;
+        }
         if (is_end_of_stmt(token)) {
             this->token = lex->get_token();
             continue;
         }
         statement->statement_true.push_back(parse_expression(parse_primary_expression()));
     } while (this->token != TOKEN_WEND);
-    scoped_symbol_table.pop_back();
+    scoped_symbol_table_layer.pop_back();
     this->token = lex->get_token();
     return statement;
 }
@@ -478,15 +539,15 @@ std::unique_ptr<ExprAST> AST::parse_expression(std::unique_ptr<ExprAST> lhs, boo
 }
 
 int AST::is_variable(const std::string& name) {
-    for (const auto& it : std::ranges::reverse_view(scoped_symbol_table)) {
-        if (const int type = is_variable(*it, name); type != 0) return type;
+    for (const auto& it : std::ranges::reverse_view(scoped_symbol_table_layer)) {
+        if (const int type = is_variable(it.symbol_table, name); type != 0) return type;
     }
     return 0;
 }
 
-int AST::is_variable(SymbolTable& symbol_table, const std::string& name) {
-    if (!symbol_table.contains(name)) return 0;
-    const auto [first, second] = symbol_table.equal_range(name);
+int AST::is_variable(SymbolTable* symbol_table, const std::string& name) {
+    if (!symbol_table->contains(name)) return 0;
+    const auto [first, second] = symbol_table->equal_range(name);
     for (auto it = first; it != second; ++it) {
         if (is_variable_type(it->second)) return it->second;
     }

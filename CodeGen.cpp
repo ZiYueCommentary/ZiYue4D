@@ -134,7 +134,7 @@ bool CodeGen::generate() {
 
         llvm::ArrayType* arrayTy = llvm::ArrayType::get(ctorStructTy, 1);
 
-        auto* globalCtors = new llvm::GlobalVariable(
+        new llvm::GlobalVariable(
             *module,
             arrayTy,
             false,
@@ -149,7 +149,7 @@ bool CodeGen::generate() {
         llvm::Function* function = module->getFunction(unique_function_name(func_def->signature));
         llvm::BasicBlock* block = llvm::BasicBlock::Create(*context, "", function);
         scoped_symbol_table.emplace_back();
-        semantic->ast->scoped_symbol_table.emplace_back(&func_def->signature->symbol_table);
+        semantic->ast->scoped_symbol_table_layer.emplace_back(&func_def->signature->symbol_table);
         semantic->scoped_symbol_types.emplace_back();
         lifecycles.push_back({true, {}});
         builder->SetInsertPoint(block);
@@ -186,7 +186,7 @@ bool CodeGen::generate() {
         llvm::verifyFunction(*function, &llvm::errs());
         semantic->scope_function = nullptr;
         scoped_symbol_table.pop_back();
-        semantic->ast->scoped_symbol_table.pop_back();
+        semantic->ast->scoped_symbol_table_layer.pop_back();
         semantic->scoped_symbol_types.pop_back();
     }
 
@@ -368,6 +368,8 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         release_lifecycle_resources(true, return_value);
         builder->CreateRet(return_value);
     }
+    // dangerous!
+    static llvm::BasicBlock *pre_while_block = nullptr, *post_while_block = nullptr;
     if (typeid(*expr) == typeid(IfStatementAST)) {
         auto& if_statement = dynamic_cast<const IfStatementAST&>(*expr);
         llvm::Value* condition = builder->CreateICmpNE(visit(if_statement.condition), builder->getInt32(0));
@@ -384,6 +386,14 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         lifecycles.push_back({false, {}});
         for (const auto& if_expr : if_statement.statement_true) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
+            if (typeid(*if_expr) == typeid(ExitAST)) {
+                builder->CreateBr(post_while_block);
+                continue;
+            }
+            if (typeid(*if_expr) == typeid(ContinueAST)) {
+                builder->CreateBr(pre_while_block);
+                continue;
+            }
             visit(if_expr);
         }
         if (builder->GetInsertBlock()->getTerminator() == nullptr) {
@@ -401,6 +411,14 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         lifecycles.push_back({false, {}});
         for (const auto& if_expr : if_statement.statement_false) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
+            if (typeid(*if_expr) == typeid(ExitAST)) {
+                builder->CreateBr(post_while_block);
+                continue;
+            }
+            if (typeid(*if_expr) == typeid(ContinueAST)) {
+                builder->CreateBr(pre_while_block);
+                continue;
+            }
             visit(if_expr);
         }
         if (builder->GetInsertBlock()->getTerminator() == nullptr) {
@@ -416,7 +434,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
     if (typeid(*expr) == typeid(WhileStatementAST)) {
         auto& while_statement = dynamic_cast<const WhileStatementAST&>(*expr);
         llvm::Function* scope = module->getFunction(unique_function_name(*semantic->scope_function));
-        llvm::BasicBlock* pre_while_block = nullptr;
+        pre_while_block = nullptr;
         if (scope->back().empty()) {
             pre_while_block = &scope->back();
         } else {
@@ -426,16 +444,24 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         }
         llvm::Value* condition = builder->CreateICmpNE(visit(while_statement.condition), builder->getInt32(0));
         llvm::BasicBlock* statement_true_block = llvm::BasicBlock::Create(*context, "", scope);
-        llvm::BasicBlock* post_while_block = llvm::BasicBlock::Create(*context, "", scope);
+        post_while_block = llvm::BasicBlock::Create(*context, "", scope);
         builder->CreateCondBr(condition, statement_true_block, post_while_block);
         semantic->scoped_symbol_types.emplace_back();
         scoped_symbol_table.emplace_back();
         builder->SetInsertPoint(statement_true_block);
         build_scoped_symbol_table(while_statement.statement_true_symbol_table);
         lifecycles.push_back({false, {}});
-        for (const auto& if_expr : while_statement.statement_true) {
+        for (const auto& while_expr : while_statement.statement_true) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
-            visit(if_expr);
+            if (typeid(*while_expr) == typeid(ExitAST)) {
+                builder->CreateBr(post_while_block);
+                continue;
+            }
+            if (typeid(*while_expr) == typeid(ContinueAST)) {
+                builder->CreateBr(pre_while_block);
+                continue;
+            }
+            visit(while_expr);
         }
         if (builder->GetInsertBlock()->getTerminator() == nullptr) {
             release_lifecycle_resources();

@@ -11,7 +11,7 @@ public:
         // initializing constants from std...
         for (auto&[name, value] : std_ast.constant_table)
         {
-            this->ast->scoped_symbol_table.front()->insert({ name, std_ast.scoped_symbol_table.front()->equal_range(name).first->second });
+            this->ast->scoped_symbol_table_layer.front().symbol_table->insert({ name, std_ast.scoped_symbol_table_layer.front().symbol_table->equal_range(name).first->second });
             this->ast->constant_table.emplace(name, std::move(value));
         }
         // initializing functions from std...

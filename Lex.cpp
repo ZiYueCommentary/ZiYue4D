@@ -86,7 +86,7 @@ int Lex::get_token() {
         if (next_char() == '*') {
             do {
                 if (last_char == '*') {
-                    if ((next_char()) == '/') break;
+                    if (next_char() == '/') break;
                 }
                 next_char();
             } while (last_char != EOF);
@@ -99,7 +99,7 @@ int Lex::get_token() {
 
     if (last_char == '%') {
         if (next_char() == '0' || last_char == '1') {
-            std::string bin_int = std::string(1, static_cast<char>(last_char));
+            auto bin_int = std::string(1, static_cast<char>(last_char));
             while (next_char() == '0' || last_char == '1') {
                 bin_int += static_cast<char>(last_char);
             }
@@ -110,7 +110,7 @@ int Lex::get_token() {
     }
     if (last_char == '$') {
         if (isxdigit(next_char())) {
-            std::string hex_int = std::string(1, static_cast<char>(last_char));
+            auto hex_int = std::string(1, static_cast<char>(last_char));
             while (isxdigit(next_char())) {
                 hex_int += static_cast<char>(last_char);
             }
@@ -190,7 +190,7 @@ int Lex::get_token() {
             if (last_char == '\n') throw lex_exception("mismatched quotes");
             string_value += last_char;
             if (last_char == '\\') {
-                string_value += (next_char());
+                string_value += next_char();
             }
         }
         next_char();

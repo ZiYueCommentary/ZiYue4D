@@ -39,7 +39,9 @@ enum Token {
     TOKEN_THEN,
     TOKEN_ENDIF,
     TOKEN_WHILE,
-    TOKEN_WEND
+    TOKEN_WEND,
+    TOKEN_EXIT,
+    TOKEN_CONTINUE
 };
 
 enum SymbolType {
@@ -70,5 +72,7 @@ const std::unordered_map<std::string, Token> tokens = {
     {"then", TOKEN_THEN},
     {"endif", TOKEN_ENDIF},
     {"while", TOKEN_WHILE},
-    {"wend", TOKEN_WEND}
+    {"wend", TOKEN_WEND},
+    {"exit", TOKEN_EXIT},
+    {"continue", TOKEN_CONTINUE}
 };

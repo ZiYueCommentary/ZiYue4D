@@ -5,6 +5,18 @@
 
 using SymbolTable = std::unordered_multimap<std::string, SymbolType>;
 
+enum SymbolTableType {
+    SYMBOL_TABLE_TYPE_GLOBAL,
+    SYMBOL_TABLE_TYPE_FUNCTION,
+    SYMBOL_TABLE_TYPE_IF,
+    SYMBOL_TABLE_TYPE_WHILE
+};
+
+struct SymbolTableLayer {
+    SymbolTable* symbol_table;
+    SymbolTableType layer_type;
+};
+
 class ExprAST {
 public:
     virtual ~ExprAST() = default;
@@ -173,6 +185,22 @@ public:
     friend class CodeGen;
 };
 
+class ExitAST : public ExprAST {
+public:
+    ExitAST() {}
+
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
+
+class ContinueAST : public ExprAST {
+public:
+    ContinueAST() {}
+
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
+
 using FunctionTable = std::unordered_multimap<std::string, std::unique_ptr<FunctionAST>>;
 using ExternFunctionTable = std::unordered_map<std::string, std::unique_ptr<FunctionSignatureAST>>;
 
@@ -191,11 +219,11 @@ private:
     std::unique_ptr<IfStatementAST> parse_if_statement();
     std::unique_ptr<WhileStatementAST> parse_while_statement();
     int is_variable(const std::string& name);
-    int is_variable(SymbolTable& symbol_table, const std::string& name);
+    int is_variable(SymbolTable* symbol_table, const std::string& name);
 
 
     std::unique_ptr<Lex> lex;
-    std::vector<SymbolTable*> scoped_symbol_table;
+    std::vector<SymbolTableLayer> scoped_symbol_table_layer;
     GlobalTable constant_table;
     GlobalTable global_table;
     FunctionTable function_table;

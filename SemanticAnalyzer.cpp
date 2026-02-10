@@ -44,7 +44,7 @@ bool SemanticAnalyzer::analyze() {
     for (auto& function : ast->function_table | std::views::values) {
         scope_function = &function->signature;
         scoped_symbol_types.emplace_back();
-        ast->scoped_symbol_table.emplace_back(&function->signature->symbol_table);
+        ast->scoped_symbol_table_layer.emplace_back(&function->signature->symbol_table, SYMBOL_TABLE_TYPE_FUNCTION);
         const auto& symbol_table = function->signature->symbol_table;
         for (const auto& [name, type] : symbol_table) {
             if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
@@ -74,7 +74,7 @@ bool SemanticAnalyzer::analyze() {
                 occur_errors = true;
             }
         }
-        ast->scoped_symbol_table.pop_back();
+        ast->scoped_symbol_table_layer.pop_back();
         scoped_symbol_types.pop_back();
     }
     return occur_errors;
@@ -146,9 +146,8 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
             case '&': {
                 const auto& ident = dynamic_cast<VariableExprAST&>(*call.expr);
                 // TODO variable
-                if (!ast->scoped_symbol_table.front()->contains(ident.name))
-                    throw semantic_exception(
-                        "unknown identifier");
+                if (!ast->scoped_symbol_table_layer.front().symbol_table->contains(ident.name))
+                    throw semantic_exception("unknown identifier");
                 const auto candidates = ast->function_table.equal_range(ident.name);
                 if (std::distance(candidates.first, candidates.second) > 1)
                     std::cerr << termcolor::yellow <<
@@ -266,21 +265,21 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
         {
             scoped_symbol_types.emplace_back();
             auto& symbol_table = if_statement.statement_true_symbol_table;
-            ast->scoped_symbol_table.emplace_back(&symbol_table);
+            ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_IF);
             for (const auto& [name, type] : symbol_table) {
                 if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
             }
             for (auto& true_expr : if_statement.statement_true) {
                 get_type(true_expr);
             }
-            ast->scoped_symbol_table.pop_back();
+            ast->scoped_symbol_table_layer.pop_back();
             scoped_symbol_types.pop_back();
         }
         // statement false
         {
             scoped_symbol_types.emplace_back();
             auto& symbol_table = if_statement.statement_false_symbol_table;
-            ast->scoped_symbol_table.emplace_back(&symbol_table);
+            ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_IF);
             for (
                 const auto& [name, type] : symbol_table) {
                 if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
@@ -288,7 +287,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
             for (auto& false_expr : if_statement.statement_false) {
                 get_type(false_expr);
             }
-            ast->scoped_symbol_table.pop_back();
+            ast->scoped_symbol_table_layer.pop_back();
             scoped_symbol_types.pop_back();
         }
         return SYMBOL_TYPE_VOID;
@@ -299,17 +298,18 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
             throw semantic_exception("while condition must be integer");
         scoped_symbol_types.emplace_back();
         auto& symbol_table = while_statement.statement_true_symbol_table;
-        ast->scoped_symbol_table.emplace_back(&symbol_table);
+        ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_WHILE);
         for (const auto& [name, type] : symbol_table) {
             if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
         }
         for (auto& true_expr : while_statement.statement_true) {
             get_type(true_expr);
         }
-        ast->scoped_symbol_table.pop_back();
+        ast->scoped_symbol_table_layer.pop_back();
         scoped_symbol_types.pop_back();
         return SYMBOL_TYPE_VOID;
     }
+    if (typeid(*expr) == typeid(ExitAST) || typeid(*expr) == typeid(ContinueAST)) return SYMBOL_TYPE_VOID;
     throw semantic_exception("unknown expression");
 }
 
@@ -343,13 +343,13 @@ bool SemanticAnalyzer::is_constant_expression(const std::unique_ptr<ExprAST>& ex
 }
 
 bool SemanticAnalyzer::is_relational_operator(int token) {
-    return token == TOKEN_NOT_EQUALS || token == TOKEN_EQUALS || token == TOKEN_LESS_THAN || token ==
-           TOKEN_LESS_THAN_OR_EQUALS || token == TOKEN_GREATER_THAN || token == TOKEN_GREATER_THAN_OR_EQUALS;
+    return token == TOKEN_NOT_EQUALS || token == TOKEN_EQUALS || token == TOKEN_LESS_THAN ||
+           token == TOKEN_LESS_THAN_OR_EQUALS || token == TOKEN_GREATER_THAN || token == TOKEN_GREATER_THAN_OR_EQUALS;
 }
 
 bool SemanticAnalyzer::is_bitwise_or_logic_operator(int token) {
-    return token == TOKEN_BITWISE_AND || token == TOKEN_BITWISE_OR || token == TOKEN_LOGIC_OR || token ==
-           TOKEN_LOGIC_AND || token == TOKEN_LOGIC_NOT;
+    return token == TOKEN_BITWISE_AND || token == TOKEN_BITWISE_OR || token == TOKEN_LOGIC_OR ||
+           token == TOKEN_LOGIC_AND || token == TOKEN_LOGIC_NOT;
 }
 
 std::string SemanticAnalyzer::readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature) {
