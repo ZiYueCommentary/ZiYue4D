@@ -54,13 +54,9 @@ bool is_alpha(int c) {
 }
 
 int Lex::next_char() {
-    last_char = file->get();
-    if (last_char == '\n') {
-        line++;
-        pos = 0;
-    } else {
-        pos++;
-    }
+    last_token_pos = pos - 1;
+    if (pos >= this->file->getBuffer().size()) return last_char = EOF;
+    last_char = file->getBuffer()[pos++];
     return last_char;
 }
 
@@ -99,22 +95,28 @@ int Lex::get_token() {
 
     if (last_char == '%') {
         if (next_char() == '0' || last_char == '1') {
+            const size_t begin = pos;
             auto bin_int = std::string(1, static_cast<char>(last_char));
             while (next_char() == '0' || last_char == '1') {
                 bin_int += static_cast<char>(last_char);
             }
             int_value = std::stoi(bin_int, nullptr, 2);
+            range = llvm::SMRange(llvm::SMLoc::getFromPointer(file->getBuffer().data() + begin),
+                                  llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos));
             return TOKEN_INTEGER;
         }
         return TOKEN_TYPE_INT;
     }
     if (last_char == '$') {
         if (isxdigit(next_char())) {
+            const size_t begin = pos;
             auto hex_int = std::string(1, static_cast<char>(last_char));
             while (isxdigit(next_char())) {
                 hex_int += static_cast<char>(last_char);
             }
             int_value = std::stoi(hex_int, nullptr, 16);
+            range = llvm::SMRange(llvm::SMLoc::getFromPointer(file->getBuffer().data() + begin),
+                                  llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos));
             return TOKEN_INTEGER;
         }
         return TOKEN_TYPE_STRING;
@@ -173,7 +175,7 @@ int Lex::get_token() {
             next_char();
             return TOKEN_LOGIC_AND;
         }
-        return TOKEN_BITWISE_AND;
+        return '&';
     }
     if (last_char == '|') {
         next_char();
@@ -185,9 +187,17 @@ int Lex::get_token() {
     }
 
     if (last_char == '\"') {
+        const size_t begin = pos - 1;
         string_value.clear();
-        while ((next_char()) != '\"') {
-            if (last_char == '\n') throw lex_exception("mismatched quotes");
+        while (next_char() != '\"') {
+            if (last_char == '\n' || last_char == '\r') {
+                range = llvm::SMRange(llvm::SMLoc::getFromPointer(file->getBuffer().data() + begin),
+                                      llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos));
+                const llvm::SMLoc where = llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos - 1);
+                source_mgr.PrintMessage(where, llvm::SourceMgr::DK_Error, "mismatched quotes", range,
+                                        {llvm::SMFixIt(where, "adding \" in the end")});
+                throw std::exception();
+            }
             string_value += last_char;
             if (last_char == '\\') {
                 string_value += next_char();
@@ -195,10 +205,13 @@ int Lex::get_token() {
         }
         next_char();
         string_value = parse_string_literal(string_value);
+        range = llvm::SMRange(llvm::SMLoc::getFromPointer(file->getBuffer().data() + begin),
+                              llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos));
         return TOKEN_STRING;
     }
 
     if (isdigit(last_char) || last_char == '.') {
+        const size_t begin = pos - 1;
         std::string number;
         Token type = TOKEN_INTEGER;
         do {
@@ -213,16 +226,20 @@ int Lex::get_token() {
         } else {
             float_value = std::strtof(number.c_str(), nullptr);
         }
+        range = llvm::SMRange(llvm::SMLoc::getFromPointer(file->getBuffer().data() + begin),
+                              llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos));
         return type;
     }
 
     if (is_alpha(last_char)) {
+        const size_t begin = pos - 1;
         identifier = tolower(last_char);
         case_identifier = last_char;
         while (is_alpha(next_char()) || isdigit(last_char)) {
             identifier += tolower(last_char);
             case_identifier += last_char;
         }
+        range = quick_build_range(begin, pos);
         if (tokens.contains(identifier)) return tokens.at(identifier);
         return TOKEN_IDENTIFIER;
     }
@@ -232,4 +249,15 @@ int Lex::get_token() {
     const int curr_char = last_char;
     next_char();
     return curr_char;
+}
+
+llvm::SMRange Lex::quick_build_range(const size_t begin, const size_t end) const {
+    return {
+        llvm::SMLoc::getFromPointer(file->getBuffer().data() + begin),
+        llvm::SMLoc::getFromPointer(file->getBuffer().data() + end)
+    };
+}
+
+llvm::SMLoc Lex::quick_build_loc(size_t pos) const {
+    return llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos);
 }

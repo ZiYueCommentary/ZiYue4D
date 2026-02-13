@@ -12,32 +12,27 @@ bool SemanticAnalyzer::analyze() {
     for (auto& [name, value] : ast->constant_table) {
         scoped_symbol_types.back().emplace(name, static_cast<SymbolType>(ast->is_variable(name)));
         if (!is_constant_expression(value)) {
-            std::cerr << termcolor::red << "expression must be constant\n" << termcolor::reset;
+            ast->lex->source_mgr.PrintMessage(value->range.Start, llvm::SourceMgr::DK_Error,
+                                              "expression must be constant", value->range);
             occur_errors = true;
         }
-        try {
-            if (get_type(value) != ast->is_variable(name)) {
-                std::cerr << termcolor::red << "mismatch type at constant " << name << " definition\n" <<
-                        termcolor::reset;
-                occur_errors = true;
-            }
-        } catch (semantic_exception& e) {
-            std::cerr << termcolor::red << "invalid syntax at constant " << name << " definition: " << e.
-                    what() << '\n' << termcolor::reset;
+        const SymbolType value_type = get_type(value);
+        if (const int constant_type = ast->is_variable(name); value_type != constant_type) {
+            ast->lex->source_mgr.PrintMessage(value->range.Start, llvm::SourceMgr::DK_Error,
+                                              symbol_type_to_literal(value_type) + " is not " +
+                                              symbol_type_to_literal(static_cast<SymbolType>(constant_type)),
+                                              value->range);
             occur_errors = true;
         }
     }
     for (auto& [name, value] : ast->global_table) {
         scoped_symbol_types.back().emplace(name, static_cast<SymbolType>(ast->is_variable(name)));
-        try {
-            if (value != nullptr && !can_convert_to(get_type(value), static_cast<SymbolType>(ast->is_variable(name)))) {
-                std::cerr << termcolor::red << "mismatch type at global " << name << " definition\n" <<
-                        termcolor::reset;
-                occur_errors = true;
-            }
-        } catch (semantic_exception& e) {
-            std::cerr << termcolor::red << "invalid syntax at global " << name << " definition: " << e.
-                    what() << '\n' << termcolor::reset;
+        const SymbolType value_type = get_type(value);
+        if (const int variable_type = ast->is_variable(name); value_type != variable_type) {
+            ast->lex->source_mgr.PrintMessage(value->range.Start, llvm::SourceMgr::DK_Error,
+                                              symbol_type_to_literal(value_type) + " cannot convert to " +
+                                              symbol_type_to_literal(static_cast<SymbolType>(variable_type)),
+                                              value->range);
             occur_errors = true;
         }
     }
@@ -51,26 +46,19 @@ bool SemanticAnalyzer::analyze() {
         }
 
         for (const auto& arg : function->signature->arguments) {
-            try {
-                if (arg->default_value != nullptr && !can_convert_to(get_type(arg->default_value), arg->type)) {
-                    std::cerr << termcolor::red << "mismatch argument default value at " << function->signature->name <<
-                            ": " <<
-                            arg->name << " is " << arg->type << '\n' << termcolor::reset;
-                }
-            } catch (semantic_exception& e) {
-                std::cerr << termcolor::red << "invalid syntax at " << readable_function_signature(function) <<
-                        " signature: " << e
-                        .what() << '\n' << termcolor::reset;
+            const SymbolType value_type = get_type(arg->default_value);
+            if (const int argument_type = arg->type; value_type != argument_type) {
+                ast->lex->source_mgr.PrintMessage(arg->default_value->range.Start, llvm::SourceMgr::DK_Error,
+                                                  symbol_type_to_literal(value_type) + " cannot convert to " +
+                                                  symbol_type_to_literal(static_cast<SymbolType>(argument_type)),
+                                                  arg->default_value->range);
                 occur_errors = true;
             }
         }
         for (auto& expr : function->body) {
             try {
                 get_type(expr);
-            } catch (semantic_exception& e) {
-                std::cerr << termcolor::red << "invalid syntax at " << readable_function_signature(function) <<
-                        " definition: " <<
-                        e.what() << '\n' << termcolor::reset;
+            } catch (std::exception&) {
                 occur_errors = true;
             }
         }
@@ -80,7 +68,8 @@ bool SemanticAnalyzer::analyze() {
     return occur_errors;
 }
 
-bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) {
+bool SemanticAnalyzer::can_convert_to(const std::unique_ptr<ExprAST>& old_expr, const SymbolType new_type) {
+    const SymbolType old_type = get_type(old_expr);
     if (old_type == new_type) return true;
     switch (old_type) {
         case SYMBOL_TYPE_VOID:
@@ -91,8 +80,8 @@ bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) 
             return new_type == SYMBOL_TYPE_FLOAT || new_type == SYMBOL_TYPE_STRING;
         case SYMBOL_TYPE_FLOAT:
             if (new_type == SYMBOL_TYPE_INT) {
-                std::cerr << termcolor::yellow << "unsafe conversion: float to int may cause precision loss\n" <<
-                        termcolor::reset;
+                ast->lex->source_mgr.PrintMessage(old_expr->range.Start, llvm::SourceMgr::DK_Warning,
+                                                  "float to int may cause precision loss", old_expr->range);
                 return true;
             }
             return new_type == SYMBOL_TYPE_STRING;
@@ -102,10 +91,10 @@ bool SemanticAnalyzer::can_convert_to(SymbolType old_type, SymbolType new_type) 
 }
 
 const std::unique_ptr<FunctionSignatureAST>* SemanticAnalyzer::seek_best_match_function(const CallExprAST& expr) {
-    auto candidates = ast->function_table.equal_range(expr.name);
-    std::unique_ptr<FunctionSignatureAST>* current_candidate = nullptr;
+    auto [begin, end] = ast->function_table.equal_range(expr.name);
+    const std::unique_ptr<FunctionSignatureAST>* current_candidate = nullptr;
     size_t current_mandatory = 0;
-    for (auto& it = candidates.first; it != candidates.second; ++it) {
+    for (auto& it = begin; it != end; ++it) {
         const size_t mandatory_args = std::ranges::count_if(it->second->signature->arguments,
                                                             [](const std::unique_ptr<FunctionArgument>& arg) {
                                                                 return arg->default_value == nullptr;
@@ -141,30 +130,36 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
         return SYMBOL_TYPE_STRING;
     }
     if (typeid(*expr) == typeid(UnaryExprAST)) {
-        auto& call = dynamic_cast<UnaryExprAST&>(*expr);
+        const auto& call = dynamic_cast<UnaryExprAST&>(*expr);
         switch (call.op) {
             case '&': {
                 const auto& ident = dynamic_cast<VariableExprAST&>(*call.expr);
                 // TODO variable
-                if (!ast->scoped_symbol_table_layer.front().symbol_table->contains(ident.name))
-                    throw semantic_exception("unknown identifier");
+                if (!ast->scoped_symbol_table_layer.front().symbol_table->contains(ident.name)) {
+                    ast->lex->source_mgr.PrintMessage(ident.range.Start, llvm::SourceMgr::DK_Error,
+                                                      "unknown function name", ident.range);
+                    throw std::exception();
+                }
                 const auto candidates = ast->function_table.equal_range(ident.name);
                 if (std::distance(candidates.first, candidates.second) > 1)
-                    std::cerr << termcolor::yellow <<
-                            "undefined behavior: retrieving function pointer which has overloading\n" <<
-                            termcolor::reset;
+                    ast->lex->source_mgr.PrintMessage(call.range.Start, llvm::SourceMgr::DK_Warning,
+                                                      "retrieving function pointer which has overloading", call.range);
                 return SYMBOL_TYPE_POINTER;
             }
             case '-':
             case TOKEN_LOGIC_NOT: {
                 const SymbolType type = get_type(call.expr);
                 if (type == SYMBOL_TYPE_STRING) {
-                    throw semantic_exception("unary operator cannot apply to the expression");
+                    ast->lex->source_mgr.PrintMessage(call.range.Start, llvm::SourceMgr::DK_Error,
+                                                      "unary operator cannot apply to the expression", call.range);
+                    throw std::exception();
                 }
                 return call.op == TOKEN_LOGIC_NOT ? SYMBOL_TYPE_INT : type;
             }
             default:
-                throw semantic_exception("invalid unary operator");
+                ast->lex->source_mgr.PrintMessage(call.range.Start, llvm::SourceMgr::DK_Error,
+                                                  "unknown unary operator", call.range);
+                throw std::exception();
         }
     }
     if (typeid(*expr) == typeid(CallExprAST)) {
@@ -172,46 +167,58 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
         const auto candidate = seek_best_match_function(call);
         if (candidate != nullptr) {
             for (int i = 0; i < call.arguments.size(); i++) {
-                if (!can_convert_to(get_type(call.arguments.at(i)), (*candidate)->arguments.at(i)->type)) {
-                    throw semantic_exception("mismatch argument type");
+                const SymbolType new_type = (*candidate)->arguments.at(i)->type;
+                if (!can_convert_to(call.arguments.at(i), new_type)) {
+                    ast->lex->source_mgr.PrintMessage(call.arguments.at(i)->range.Start, llvm::SourceMgr::DK_Error,
+                                                      "cannot convert " + symbol_type_to_literal(
+                                                          get_type(call.arguments.at(i))) + " to " +
+                                                      symbol_type_to_literal(new_type), call.arguments.at(i)->range);
+                    throw std::exception();
                 }
             }
             return (*candidate)->return_value_type;
         }
-        throw semantic_exception("no function that matches the requirement");
+        ast->lex->source_mgr.PrintMessage(call.range.Start, llvm::SourceMgr::DK_Error,
+                                          "no function that matches the requirement", call.range);
+        throw std::exception();
     }
     if (typeid(*expr) == typeid(BinaryExprAST)) {
-        auto& biexpr = dynamic_cast<BinaryExprAST&>(*expr);
-        const SymbolType lhs_type = get_type(biexpr.lhs);
-        const SymbolType rhs_type = get_type(biexpr.rhs);
-        if (biexpr.op == '=') {
-            if (typeid(*biexpr.lhs) == typeid(VariableExprAST)) {
-                const auto& var = dynamic_cast<VariableExprAST&>(*biexpr.lhs);
+        auto& bi_expr = dynamic_cast<BinaryExprAST&>(*expr);
+        const SymbolType lhs_type = get_type(bi_expr.lhs);
+        const SymbolType rhs_type = get_type(bi_expr.rhs);
+        if (bi_expr.op == '=') {
+            if (typeid(*bi_expr.lhs) == typeid(VariableExprAST)) {
+                const auto& var = dynamic_cast<VariableExprAST&>(*bi_expr.lhs);
                 if (ast->constant_table.contains(var.name)) {
-                    throw semantic_exception("cannot realloc constant value");
+                    ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Error,
+                                                      "cannot realloc constant value", bi_expr.range);
+                    throw std::exception();
                 }
             }
             if (rhs_type != SYMBOL_TYPE_VOID) {
                 switch (lhs_type) {
                     case SYMBOL_TYPE_INT:
                         if (rhs_type == SYMBOL_TYPE_POINTER) {
-                            std::cerr << termcolor::yellow <<
-                                    "deprecated: assigning pointer to a integer variable, please use * for pointer type instead."
-                                    << termcolor::reset;
+                            ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Warning,
+                                                              "assigning pointer to a integer variable is deprecated",
+                                                              bi_expr.range, {
+                                                                  llvm::SMFixIt(
+                                                                      bi_expr.op_loc, "assigning to a pointer variable")
+                                                              });
                             return SYMBOL_TYPE_POINTER;
                         }
                         if (rhs_type == SYMBOL_TYPE_FLOAT) {
-                            std::cerr << termcolor::yellow <<
-                                    "unsafe conversion: float to int may cause precision loss\n" << termcolor::reset;
+                            ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Warning,
+                                                              "float to int may cause precision loss", bi_expr.range);
                         }
                     case SYMBOL_TYPE_FLOAT:
                         if (rhs_type != SYMBOL_TYPE_STRING) return lhs_type;
                         break;
                     case SYMBOL_TYPE_STRING:
                         if (rhs_type == SYMBOL_TYPE_POINTER) {
-                            std::cerr << termcolor::yellow <<
-                                    "undefined behavior: assigning a pointer to a string variable, please use * for pointer type instead."
-                                    << termcolor::reset;
+                            ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Warning,
+                                                              "assigning a pointer to a string variable, please use @ for pointer type instead",
+                                                              bi_expr.range);
                         }
                         return lhs_type;
                     case SYMBOL_TYPE_POINTER:
@@ -224,18 +231,23 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
                         }
                 }
             }
-            throw semantic_exception("bad conversion");
+            ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Error,
+                                              "cannot convert " + symbol_type_to_literal(lhs_type) + " to " +
+                                              symbol_type_to_literal(rhs_type), bi_expr.range);
+            throw std::exception();
         }
         if (lhs_type == SYMBOL_TYPE_STRING || rhs_type == SYMBOL_TYPE_STRING) {
-            if (biexpr.op == '+') return SYMBOL_TYPE_STRING;
-            if (biexpr.op == TOKEN_EQUALS) return SYMBOL_TYPE_INT;
-            throw semantic_exception("invalid operation");
+            if (bi_expr.op == '+') return SYMBOL_TYPE_STRING;
+            if (bi_expr.op == TOKEN_EQUALS) return SYMBOL_TYPE_INT;
+            ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Error,
+                                              "invalid operator for string", bi_expr.range);
+            throw std::exception();
         }
-        if ((lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT)) {
-            if (is_relational_operator(biexpr.op)) return SYMBOL_TYPE_INT;
-            if (is_bitwise_or_logic_operator(biexpr.op)) {
-                std::cerr << termcolor::yellow << "unsafe conversion: float to int may cause precision loss\n" <<
-                        termcolor::reset;
+        if (lhs_type == SYMBOL_TYPE_FLOAT || rhs_type == SYMBOL_TYPE_FLOAT) {
+            if (is_relational_operator(bi_expr.op)) return SYMBOL_TYPE_INT;
+            if (is_bitwise_or_logic_operator(bi_expr.op)) {
+                ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Warning,
+                                                  "float to int may cause precision loss", bi_expr.range);
                 return SYMBOL_TYPE_INT;
             }
             return SYMBOL_TYPE_FLOAT;
@@ -247,25 +259,35 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
         for (const auto& scoped_symbol_table : std::ranges::reverse_view(scoped_symbol_types)) {
             if (scoped_symbol_table.contains(var.name)) return scoped_symbol_table.at(var.name);
         }
-        throw semantic_exception("unknown variable");
+        ast->lex->source_mgr.PrintMessage(var.range.Start, llvm::SourceMgr::DK_Error,
+                                          "unknown variable " + var.name, var.range);
+        throw std::exception();
     }
     if (typeid(*expr) == typeid(ReturnExprAST)) {
         const auto& ret = dynamic_cast<ReturnExprAST&>(*expr);
         if (ret.expr == nullptr) return (*scope_function)->return_value_type;
         const SymbolType type = get_type(ret.expr);
-        if (!can_convert_to(type, (*scope_function)->return_value_type))
-            throw semantic_exception("mismatched return value type");
+        if (!can_convert_to(ret.expr, (*scope_function)->return_value_type)) {
+            ast->lex->source_mgr.PrintMessage(ret.expr->range.Start, llvm::SourceMgr::DK_Error,
+                                              "cannot convert " + symbol_type_to_literal(type) + " to " +
+                                              symbol_type_to_literal((*scope_function)->return_value_type),
+                                              ret.expr->range);
+            throw std::exception();
+        }
         return type;
     }
     if (typeid(*expr) == typeid(IfStatementAST)) {
         auto& if_statement = dynamic_cast<IfStatementAST&>(*expr);
-        if (!can_convert_to(get_type(if_statement.condition), SYMBOL_TYPE_INT))
-            throw semantic_exception("if condition must be integer");
+        if (!can_convert_to(if_statement.condition, SYMBOL_TYPE_INT)) {
+            ast->lex->source_mgr.PrintMessage(if_statement.condition->range.Start, llvm::SourceMgr::DK_Error,
+                                              "if condition statement must be integer", if_statement.condition->range);
+            throw std::exception();
+        }
         // statement true
         {
             scoped_symbol_types.emplace_back();
             auto& symbol_table = if_statement.statement_true_symbol_table;
-            ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_IF);
+            ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_BRANCH);
             for (const auto& [name, type] : symbol_table) {
                 if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
             }
@@ -279,7 +301,7 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
         {
             scoped_symbol_types.emplace_back();
             auto& symbol_table = if_statement.statement_false_symbol_table;
-            ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_IF);
+            ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_BRANCH);
             for (
                 const auto& [name, type] : symbol_table) {
                 if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
@@ -294,11 +316,15 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
     }
     if (typeid(*expr) == typeid(WhileStatementAST)) {
         auto& while_statement = dynamic_cast<WhileStatementAST&>(*expr);
-        if (!can_convert_to(get_type(while_statement.condition), SYMBOL_TYPE_INT))
-            throw semantic_exception("while condition must be integer");
+        if (!can_convert_to(while_statement.condition, SYMBOL_TYPE_INT)) {
+            ast->lex->source_mgr.PrintMessage(while_statement.condition->range.Start, llvm::SourceMgr::DK_Error,
+                                              "while condition statement must be integer",
+                                              while_statement.condition->range);
+            throw std::exception();
+        }
         scoped_symbol_types.emplace_back();
         auto& symbol_table = while_statement.statement_true_symbol_table;
-        ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_WHILE);
+        ast->scoped_symbol_table_layer.emplace_back(&symbol_table, SYMBOL_TABLE_TYPE_LOOP);
         for (const auto& [name, type] : symbol_table) {
             if (is_variable_type(type)) scoped_symbol_types.back().emplace(name, type);
         }
@@ -310,7 +336,9 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
         return SYMBOL_TYPE_VOID;
     }
     if (typeid(*expr) == typeid(ExitAST) || typeid(*expr) == typeid(ContinueAST)) return SYMBOL_TYPE_VOID;
-    throw semantic_exception("unknown expression");
+    ast->lex->source_mgr.PrintMessage(expr->range.Start, llvm::SourceMgr::DK_Error,
+                                      "unknown expression! is this a compiler bug?", expr->range);
+    throw std::exception();
 }
 
 bool SemanticAnalyzer::is_constant_expression(const std::unique_ptr<ExprAST>& expr) {
@@ -348,7 +376,7 @@ bool SemanticAnalyzer::is_relational_operator(int token) {
 }
 
 bool SemanticAnalyzer::is_bitwise_or_logic_operator(int token) {
-    return token == TOKEN_BITWISE_AND || token == TOKEN_BITWISE_OR || token == TOKEN_LOGIC_OR ||
+    return token == '&' || token == TOKEN_BITWISE_OR || token == TOKEN_LOGIC_OR ||
            token == TOKEN_LOGIC_AND || token == TOKEN_LOGIC_NOT;
 }
 

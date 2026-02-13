@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project("ZiYue4D")
 
-add_executable(ZiYue4D "CLI11.hpp" "main.cpp" "Token.h" "Lex.h" "Lex.cpp" "exceptions.h" "AST.h" "AST.cpp" "SemanticAnalyzer.h" "SemanticAnalyzer.cpp" "CodeGen.h" "CodeGen.cpp")
+add_executable(ZiYue4D "CLI11.hpp" "main.cpp" "Token.h" "Lex.h" "Lex.cpp" "AST.h" "AST.cpp" "SemanticAnalyzer.h" "SemanticAnalyzer.cpp" "CodeGen.h" "CodeGen.cpp")
 
 find_package(LLVM REQUIRED CONFIG)
 

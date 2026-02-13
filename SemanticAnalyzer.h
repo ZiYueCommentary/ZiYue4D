@@ -1,5 +1,7 @@
 #pragma once
 
+#include <llvm/Support/raw_ostream.h>
+
 #include "AST.h"
 
 class SemanticAnalyzer {
@@ -7,7 +9,10 @@ public:
     SemanticAnalyzer(std::unique_ptr<AST> ast, const std::string& std) : ast(std::move(ast)) {
         using namespace std;
         AST std_ast(std::make_unique<Lex>(std));
-        if (std_ast.parse()) throw semantic_exception("invalid standard library");
+        if (std_ast.parse()) {
+            llvm::errs() <<"invalid standard library\n";
+            throw std::exception();
+        }
         // initializing constants from std...
         for (auto&[name, value] : std_ast.constant_table)
         {
@@ -24,7 +29,7 @@ public:
     bool analyze();
 
 private:
-    bool can_convert_to(SymbolType old_type, SymbolType new_type);
+    bool can_convert_to(const std::unique_ptr<ExprAST>& old_expr, SymbolType new_type);
     const std::unique_ptr<FunctionSignatureAST>* seek_best_match_function(const CallExprAST& expr);
     SymbolType get_type(const std::unique_ptr<ExprAST>& expr);
     bool is_constant_expression(const std::unique_ptr<ExprAST>& expr);

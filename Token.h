@@ -21,7 +21,6 @@ enum Token {
     TOKEN_LOGIC_NOT,
     TOKEN_BITWISE_OR,
     TOKEN_LOGIC_OR,
-    TOKEN_BITWISE_AND,
     TOKEN_LOGIC_AND,
     TOKEN_NOT_EQUALS,
     TOKEN_EQUALS,
@@ -54,7 +53,7 @@ enum SymbolType {
     SYMBOL_TYPE_POINTER
 };
 
-const std::unordered_map<std::string, Token> tokens = {
+const std::unordered_map<std::string, int> tokens = {
     {"function", TOKEN_FUNCTION},
     {"not", TOKEN_LOGIC_NOT},
     {"end", TOKEN_END},
@@ -63,7 +62,7 @@ const std::unordered_map<std::string, Token> tokens = {
     {"const", TOKEN_CONST},
     {"local", TOKEN_LOCAL},
     {"global", TOKEN_GLOBAL},
-    {"and", TOKEN_BITWISE_AND},
+    {"and", '&'},
     {"or", TOKEN_BITWISE_OR},
     {"lor", TOKEN_LOGIC_OR},
     {"if", TOKEN_IF},

@@ -1,5 +1,6 @@
 #include "CodeGen.h"
 
+#include <format>
 #include <ranges>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/IR/Verifier.h>
@@ -211,24 +212,21 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         auto& unary_expr = dynamic_cast<const UnaryExprAST&>(*expr);
         if (unary_expr.op == '&') {
             auto& ident = dynamic_cast<const VariableExprAST&>(*unary_expr.expr);
-            auto candidates = semantic->ast->function_table.equal_range(ident.name);
-            return module->getFunction(unique_function_name(candidates.first->second->signature));
+            const auto [function, _] = semantic->ast->function_table.equal_range(ident.name);
+            return module->getFunction(unique_function_name(function->second->signature));
         }
         llvm::Value* value = visit(unary_expr.expr);
-        SymbolType type = semantic->get_type(unary_expr.expr);
-        if (type != SYMBOL_TYPE_INT && type != SYMBOL_TYPE_FLOAT) {
-            throw semantic_exception("illegal unary operation");
-        }
+        const SymbolType type = semantic->get_type(unary_expr.expr);
         switch (unary_expr.op) {
             case TOKEN_LOGIC_NOT:
                 return cast_value_to(builder->CreateICmpEQ(cast_value_to(value, SYMBOL_TYPE_INT), builder->getInt32(0)),
                                      SYMBOL_TYPE_INT);
-            case '-':
+            case '-': {
                 if (type == SYMBOL_TYPE_INT) {
                     return builder->CreateSub(builder->getInt32(0), value);
-                } else {
-                    return builder->CreateFSub(llvm::ConstantFP::get(value->getType(), 0.0f), value);
                 }
+                return builder->CreateFSub(llvm::ConstantFP::get(value->getType(), 0.0f), value);
+            }
         }
     }
     if (typeid(*expr) == typeid(BinaryExprAST)) {
@@ -274,7 +272,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
                     llvm::Value* bool_rhs = builder->CreateICmpNE(new_rhs, builder->getInt32(0));
                     return cast_value_to(builder->CreateOr(bool_lhs, bool_rhs), SYMBOL_TYPE_INT);
                 }
-                case TOKEN_BITWISE_AND:
+                case '&':
                     return builder->CreateAnd(new_lhs, new_rhs);
                 case TOKEN_BITWISE_OR:
                     return builder->CreateOr(new_lhs, new_rhs);
@@ -674,7 +672,8 @@ std::unique_ptr<ExprAST> CodeGen::merge_literal_string_operations(std::unique_pt
             if (is_literal_expression(*biexpr.lhs) && is_literal_expression(*biexpr.rhs)) {
                 std::string lhs_literal = literal_to_string(*biexpr.lhs);
                 std::string rhs_literal = literal_to_string(*biexpr.rhs);
-                return std::make_unique<StringExprAST>(std::move(lhs_literal + rhs_literal));
+                return std::make_unique<StringExprAST>(std::move(lhs_literal + rhs_literal),
+                                                       llvm::SMRange(biexpr.lhs->range.Start, biexpr.rhs->range.End));
             }
         }
     }
