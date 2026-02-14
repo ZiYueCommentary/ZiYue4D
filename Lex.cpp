@@ -239,7 +239,7 @@ int Lex::get_token() {
             identifier += tolower(last_char);
             case_identifier += last_char;
         }
-        range = quick_build_range(begin, pos);
+        range = quick_build_range(begin, last_token_pos + 1);
         if (tokens.contains(identifier)) return tokens.at(identifier);
         return TOKEN_IDENTIFIER;
     }

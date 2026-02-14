@@ -369,7 +369,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
     // dangerous!
     static llvm::BasicBlock *pre_while_block = nullptr, *post_while_block = nullptr;
     if (typeid(*expr) == typeid(IfStatementAST)) {
-        auto& if_statement = dynamic_cast<const IfStatementAST&>(*expr);
+        auto& if_statement = dynamic_cast<IfStatementAST&>(*expr);
         llvm::Value* condition = builder->CreateICmpNE(visit(if_statement.condition), builder->getInt32(0));
         llvm::Function* scope = module->getFunction(unique_function_name(*semantic->scope_function));
         llvm::BasicBlock* statement_true_block = llvm::BasicBlock::Create(*context, "", scope);
@@ -377,11 +377,12 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         llvm::BasicBlock* post_if_statement = llvm::BasicBlock::Create(*context, "", scope);
         builder->CreateCondBr(condition, statement_true_block, statement_false_block);
         // statement true
+        builder->SetInsertPoint(statement_true_block);
+        semantic->ast->scoped_symbol_table_layer.emplace_back(&if_statement.statement_true_symbol_table);
         semantic->scoped_symbol_types.emplace_back();
         scoped_symbol_table.emplace_back();
-        build_scoped_symbol_table(if_statement.statement_true_symbol_table);
-        builder->SetInsertPoint(statement_true_block);
         lifecycles.push_back({false, {}});
+        build_scoped_symbol_table(if_statement.statement_true_symbol_table);
         for (const auto& if_expr : if_statement.statement_true) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
             if (typeid(*if_expr) == typeid(ExitAST)) {
@@ -401,12 +402,14 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         lifecycles.pop_back();
         scoped_symbol_table.pop_back();
         semantic->scoped_symbol_types.pop_back();
+        semantic->ast->scoped_symbol_table_layer.pop_back();
         // statement false
+        builder->SetInsertPoint(statement_false_block);
+        semantic->ast->scoped_symbol_table_layer.emplace_back(&if_statement.statement_false_symbol_table);
         semantic->scoped_symbol_types.emplace_back();
         scoped_symbol_table.emplace_back();
-        builder->SetInsertPoint(statement_false_block);
-        build_scoped_symbol_table(if_statement.statement_false_symbol_table);
         lifecycles.push_back({false, {}});
+        build_scoped_symbol_table(if_statement.statement_false_symbol_table);
         for (const auto& if_expr : if_statement.statement_false) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) break;
             if (typeid(*if_expr) == typeid(ExitAST)) {
@@ -426,11 +429,12 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         lifecycles.pop_back();
         scoped_symbol_table.pop_back();
         semantic->scoped_symbol_types.pop_back();
+        semantic->ast->scoped_symbol_table_layer.pop_back();
 
         builder->SetInsertPoint(post_if_statement);
     }
     if (typeid(*expr) == typeid(WhileStatementAST)) {
-        auto& while_statement = dynamic_cast<const WhileStatementAST&>(*expr);
+        auto& while_statement = dynamic_cast<WhileStatementAST&>(*expr);
         llvm::Function* scope = module->getFunction(unique_function_name(*semantic->scope_function));
         pre_while_block = nullptr;
         if (scope->back().empty()) {
@@ -444,9 +448,10 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         llvm::BasicBlock* statement_true_block = llvm::BasicBlock::Create(*context, "", scope);
         post_while_block = llvm::BasicBlock::Create(*context, "", scope);
         builder->CreateCondBr(condition, statement_true_block, post_while_block);
+        builder->SetInsertPoint(statement_true_block);
+        semantic->ast->scoped_symbol_table_layer.emplace_back(&while_statement.statement_true_symbol_table);
         semantic->scoped_symbol_types.emplace_back();
         scoped_symbol_table.emplace_back();
-        builder->SetInsertPoint(statement_true_block);
         build_scoped_symbol_table(while_statement.statement_true_symbol_table);
         lifecycles.push_back({false, {}});
         for (const auto& while_expr : while_statement.statement_true) {
@@ -468,6 +473,7 @@ llvm::Value* CodeGen::visit(const std::unique_ptr<ExprAST>& expr) {
         lifecycles.pop_back();
         scoped_symbol_table.pop_back();
         semantic->scoped_symbol_types.pop_back();
+        semantic->ast->scoped_symbol_table_layer.pop_back();
         builder->SetInsertPoint(post_while_block);
     }
     return nullptr;
@@ -621,8 +627,9 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name) {
         if (table.contains(name)) {
             for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
                 if (type_table.contains(name)) {
-                    if (type_table.at(name) == SYMBOL_TYPE_STRING &&
-                        type_table != semantic->scoped_symbol_types.front())
+                    if ((type_table.at(name) == SYMBOL_TYPE_STRING && type_table != semantic->scoped_symbol_types.
+                         front()) || (semantic->ast->constant_table.contains(name) && type_table == semantic->
+                                      scoped_symbol_types.front()))
                         return table.at(name);
                     return builder->CreateLoad(symbol_type_to_type(type_table.at(name)), table.at(name));
                 }

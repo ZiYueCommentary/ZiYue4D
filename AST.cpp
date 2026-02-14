@@ -30,7 +30,7 @@ bool AST::parse() {
             continue;
         }
         if (token == TOKEN_EXIT || token == TOKEN_CONTINUE) {
-            lex->source_mgr.PrintMessage(lex->quick_build_loc(lex->last_token_pos), llvm::SourceMgr::DK_Error,
+            lex->source_mgr.PrintMessage(lex->range.Start, llvm::SourceMgr::DK_Error,
                                          "exit or continue can be used in while statements only", lex->range);
             move_to_next_stmt();
             continue;
