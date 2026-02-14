@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <iostream>
 #include <ranges>
-#include "termcolor.hpp"
 
 bool SemanticAnalyzer::analyze() {
     scope_function = &ast->function_table.equal_range("main").first->second->signature;
@@ -224,9 +223,9 @@ SymbolType SemanticAnalyzer::get_type(const std::unique_ptr<ExprAST>& expr) {
                     case SYMBOL_TYPE_POINTER:
                         if (rhs_type == SYMBOL_TYPE_POINTER || rhs_type == SYMBOL_TYPE_STRING) {
                             if (rhs_type == SYMBOL_TYPE_STRING)
-                                std::cerr << termcolor::yellow <<
-                                        "undefined behavior: assigning a string to a pointer variable. lifecycle of string is managed by ZiYue4D, the pointer may be a wild pointer."
-                                        << termcolor::reset;
+                                ast->lex->source_mgr.PrintMessage(bi_expr.op_loc, llvm::SourceMgr::DK_Warning,
+                                                                  "assigning a string to a pointer variable. lifecycle of string is managed by ZiYue4D, the pointer may be a wild pointer",
+                                                                  bi_expr.range);
                             return lhs_type;
                         }
                 }

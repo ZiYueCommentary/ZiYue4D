@@ -6,8 +6,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 
-#include "termcolor.hpp"
-
 void CodeGen::optimize_string() {
     for (const auto& val : semantic->ast->function_table | std::views::values) {
         for (auto& expr : val->body) {
@@ -166,8 +164,10 @@ bool CodeGen::generate() {
 
         for (const auto& expr : func_def->body) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) {
-                std::cerr << termcolor::yellow << "unreachable code at " << function->getName().str() << '\n' <<
-                        termcolor::reset;
+                semantic->ast->lex->source_mgr.PrintMessage(expr->range.Start, llvm::SourceMgr::DK_Warning,
+                                                            "unreachable code", expr->range, {
+                                                                llvm::SMFixIt(expr->range, "remove unreachable code")
+                                                            });
                 break;
             }
             visit(expr);
