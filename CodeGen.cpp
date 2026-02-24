@@ -154,11 +154,10 @@ bool CodeGen::generate() {
         builder->SetInsertPoint(block);
         build_scoped_symbol_table(func_def->signature->symbol_table);
 
-        int index = 0;
-        for (const auto& arg : func_def->signature->arguments) {
-            function->getArg(index)->setName(arg->name);
-            scoped_symbol_table.back().insert_or_assign(arg->name, function->getArg(index));
-            index++;
+        for (int i = 0; i < func_def->signature->arguments.size(); ++i) {
+            const std::string& name = func_def->signature->arguments.at(i)->name;
+            function->getArg(i)->setName(name);
+            scoped_symbol_table.back().insert_or_assign(name, function->getArg(i));
         }
         semantic->scope_function = &func_def->signature;
 
@@ -542,7 +541,7 @@ llvm::Type* CodeGen::token_to_type(const Token token) const {
     }
 }
 
-llvm::Type* CodeGen::symbol_type_to_type(SymbolType type) const {
+llvm::Type* CodeGen::symbol_type_to_type(const SymbolType type) const {
     switch (type) {
         case SYMBOL_TYPE_INT:
             return llvm::Type::getInt32Ty(*context);
@@ -582,11 +581,16 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
         return cache.at((void*) &signature);
     }
 
-    int mandatory_args = std::ranges::count_if(signature->arguments,
+    if (semantic->ast->function_table.count(semantic->ast->lex->to_lower_string(signature->name)) == 1) {
+        cache.insert({(void*) &signature, signature->name});
+        return signature->name;
+    }
+
+    size_t mandatory_args = std::ranges::count_if(signature->arguments,
                                                [](const std::unique_ptr<FunctionArgument>& arg) {
                                                    return arg->default_value == nullptr;
                                                });
-    int optional_args = signature->arguments.size() - mandatory_args;
+    size_t optional_args = signature->arguments.size() - mandatory_args;
     char return_value_type = 'i';
     switch (signature->return_value_type) {
         case SYMBOL_TYPE_FLOAT:
@@ -599,8 +603,8 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
             return_value_type = 'p';
     }
 
-    std::string&& stylized = std::move(std::format("{}{}_{}_{}", return_value_type, signature->name, mandatory_args,
-                                                   optional_args));
+    std::string stylized = std::format("{}{}_{}_{}", return_value_type, signature->name, mandatory_args,
+                                                   optional_args);
     cache.insert({(void*) &signature, stylized});
 
     return cache.at((void*) &signature);
@@ -640,6 +644,7 @@ llvm::Value* CodeGen::find_variable_value(const std::string& name) {
         // constant
         return scoped_symbol_table.front().at(name);
     }
+    return nullptr;
 }
 
 void CodeGen::release_lifecycle_resources(const bool is_function_return, const llvm::Value* return_value) {
@@ -672,15 +677,15 @@ std::unique_ptr<ExprAST> CodeGen::merge_literal_string_operations(std::unique_pt
         }
     }
     if (typeid(*expr) == typeid(BinaryExprAST)) {
-        auto& biexpr = dynamic_cast<BinaryExprAST&>(*expr);
-        biexpr.lhs = std::move(merge_literal_string_operations(std::move(biexpr.lhs)));
-        biexpr.rhs = std::move(merge_literal_string_operations(std::move(biexpr.rhs)));
-        if (typeid(*biexpr.lhs) == typeid(StringExprAST) || typeid(*biexpr.rhs) == typeid(StringExprAST)) {
-            if (is_literal_expression(*biexpr.lhs) && is_literal_expression(*biexpr.rhs)) {
-                std::string lhs_literal = literal_to_string(*biexpr.lhs);
-                std::string rhs_literal = literal_to_string(*biexpr.rhs);
+        auto& bi_expr = dynamic_cast<BinaryExprAST&>(*expr);
+        bi_expr.lhs = std::move(merge_literal_string_operations(std::move(bi_expr.lhs)));
+        bi_expr.rhs = std::move(merge_literal_string_operations(std::move(bi_expr.rhs)));
+        if (typeid(*bi_expr.lhs) == typeid(StringExprAST) || typeid(*bi_expr.rhs) == typeid(StringExprAST)) {
+            if (is_literal_expression(*bi_expr.lhs) && is_literal_expression(*bi_expr.rhs)) {
+                const std::string lhs_literal = literal_to_string(*bi_expr.lhs);
+                const std::string rhs_literal = literal_to_string(*bi_expr.rhs);
                 return std::make_unique<StringExprAST>(std::move(lhs_literal + rhs_literal),
-                                                       llvm::SMRange(biexpr.lhs->range.Start, biexpr.rhs->range.End));
+                                                       llvm::SMRange(bi_expr.lhs->range.Start, bi_expr.rhs->range.End));
             }
         }
     }
@@ -718,7 +723,7 @@ std::string CodeGen::literal_to_string(const ExprAST& expr) {
         auto& flt = dynamic_cast<const FloatExprAST&>(expr);
         return std::to_string(flt.value);
     }
-    return std::string();
+    return {};
 }
 
 void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table) {

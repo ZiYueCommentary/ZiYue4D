@@ -1,7 +1,6 @@
 #include "SemanticAnalyzer.h"
 
 #include <algorithm>
-#include <iostream>
 #include <ranges>
 
 bool SemanticAnalyzer::analyze() {
@@ -45,6 +44,7 @@ bool SemanticAnalyzer::analyze() {
         }
 
         for (const auto& arg : function->signature->arguments) {
+            if (arg->default_value == nullptr) continue;
             const SymbolType value_type = get_type(arg->default_value);
             if (const int argument_type = arg->type; value_type != argument_type) {
                 ast->lex->source_mgr.PrintMessage(arg->default_value->range.Start, llvm::SourceMgr::DK_Error,

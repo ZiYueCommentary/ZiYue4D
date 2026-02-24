@@ -10,32 +10,42 @@ public:
         using namespace std;
         AST std_ast(std::make_unique<Lex>(std));
         if (std_ast.parse()) {
-            llvm::errs() <<"invalid standard library\n";
+            llvm::errs() << "invalid standard library\n";
             throw std::exception();
         }
         // initializing constants from std...
-        for (auto&[name, value] : std_ast.constant_table)
-        {
-            this->ast->scoped_symbol_table_layer.front().symbol_table->insert({ name, std_ast.scoped_symbol_table_layer.front().symbol_table->equal_range(name).first->second });
+        for (auto& [name, value] : std_ast.constant_table) {
+            this->ast->scoped_symbol_table_layer.front().symbol_table->insert({
+                name, std_ast.scoped_symbol_table_layer.front().symbol_table->equal_range(name).first->second
+            });
             this->ast->constant_table.emplace(name, std::move(value));
         }
         // initializing functions from std...
-        for (auto&[name, signature] : std_ast.extern_function_table)
-        {
+        for (auto& [name, signature] : std_ast.extern_function_table) {
             signature->name = "ziyue4d_"s + signature->name;
             this->ast->extern_function_table.emplace(name, std::move(signature));
         }
     }
+
+    /// Do analyze.
+    /// @return when semantic doesn't meet errors, returns false, or true when meet errors
     bool analyze();
 
 private:
     bool can_convert_to(const std::unique_ptr<ExprAST>& old_expr, SymbolType new_type);
+
     const std::unique_ptr<FunctionSignatureAST>* seek_best_match_function(const CallExprAST& expr);
+
     SymbolType get_type(const std::unique_ptr<ExprAST>& expr);
+
     bool is_constant_expression(const std::unique_ptr<ExprAST>& expr);
+
     bool is_relational_operator(int token);
+
     bool is_bitwise_or_logic_operator(int token);
+
     std::string readable_function_signature(const std::unique_ptr<FunctionSignatureAST>& signature);
+
     std::string readable_function_signature(const std::unique_ptr<FunctionAST>& signature);
 
     std::unique_ptr<AST> ast;

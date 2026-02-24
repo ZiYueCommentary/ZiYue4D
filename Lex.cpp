@@ -1,6 +1,7 @@
 #include "Lex.h"
 
 #include <iostream>
+#include <ranges>
 #include <string>
 #include <unordered_set>
 
@@ -260,4 +261,10 @@ llvm::SMRange Lex::quick_build_range(const size_t begin, const size_t end) const
 
 llvm::SMLoc Lex::quick_build_loc(size_t pos) const {
     return llvm::SMLoc::getFromPointer(file->getBuffer().data() + pos);
+}
+
+std::string Lex::to_lower_string(const std::string& str) {
+    std::string result{};
+    std::ranges::copy(str | std::views::transform([](const char c) { return tolower(c); }), std::back_inserter(result));
+    return result;
 }

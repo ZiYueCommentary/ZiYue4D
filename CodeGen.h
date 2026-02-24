@@ -1,12 +1,9 @@
 #pragma once
 
 #include <set>
-#include "SemanticAnalyzer.h"
-#pragma warning(push)
-#pragma warning(disable: 4146 4996)
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
-#pragma warning(pop)
+#include "SemanticAnalyzer.h"
 
 struct Lifecycle {
     bool is_function;
@@ -38,7 +35,6 @@ private:
 
     [[nodiscard]] llvm::Type* symbol_type_to_type(SymbolType type) const;
 
-    // [[nodiscard]] SymbolType llvm_value_symbol_type(llvm::Value* value) const;
     std::string unique_function_name(const std::unique_ptr<FunctionSignatureAST>& signature);
 
     void update_variable_value(const std::string& name, llvm::Value* value);
@@ -46,20 +42,20 @@ private:
     llvm::Value* find_variable_value(const std::string& name);
 
     void release_lifecycle_resources(bool is_function_return = false, const llvm::Value* string_return_value = nullptr);
-
+    /// Build literal string data to LLVM IR.
     llvm::Value* build_literal_string(const std::string& str);
-
+    /// Try to merge string operations that can be evaluated during compilation.
     std::unique_ptr<ExprAST> merge_literal_string_operations(std::unique_ptr<ExprAST> expr);
-
+    /// Returns whether the expression can be evaluated during compilation.
     bool is_literal_expression(const ExprAST& expr);
 
-    bool is_non_string_literal_value(const std::unique_ptr<ExprAST>& expr) const;
+    [[nodiscard]] bool is_non_string_literal_value(const std::unique_ptr<ExprAST>& expr) const;
 
     std::string literal_to_string(const ExprAST& expr);
 
     void build_scoped_symbol_table(const SymbolTable& symbol_table);
 
-    std::string to_lower_string(const std::string& str);
+    static std::string to_lower_string(const std::string& str);
 
     std::unique_ptr<llvm::LLVMContext> context;
     std::unique_ptr<llvm::IRBuilder<>> builder;

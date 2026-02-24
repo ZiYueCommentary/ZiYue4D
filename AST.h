@@ -3,10 +3,9 @@
 #include <vector>
 #include "Lex.h"
 
-enum SymbolType;
-
 using SymbolTable = std::unordered_multimap<std::string, SymbolType>;
 
+/// SymbolTableType represents the type of the corresponding statement.
 enum SymbolTableType {
     SYMBOL_TABLE_TYPE_GLOBAL,
     SYMBOL_TABLE_TYPE_FUNCTION,
@@ -138,7 +137,7 @@ class BinaryExprAST : public ExprAST {
 public:
     BinaryExprAST(const int op, std::unique_ptr<ExprAST> lhs, std::unique_ptr<ExprAST> rhs, const llvm::SMRange range,
                   const llvm::SMLoc op_loc)
-        : ExprAST(range), op(op), lhs(std::move(lhs)), rhs(std::move(rhs)), op_loc(op_loc) {
+        : ExprAST(range), op_loc(op_loc), op(op), lhs(std::move(lhs)), rhs(std::move(rhs)) {
     }
 
     const llvm::SMLoc op_loc;

@@ -42,6 +42,8 @@ constexpr bool is_end_of_stmt(const int token) {
     return token == TOKEN_LINE_FEED || token == TOKEN_COLON;
 }
 
+/// Lexical analyzer (Lexer) tokenize code based on grammar, and hands them to build Abstract Syntax Tree (AST).
+/// Lexer in ZiYue4D is invoked by AST, and they work at the same time.
 class Lex {
 public:
     /// The literal of the identifier. All in lower case. Only valid when token is TOKEN_IDENTIFIER.
@@ -63,8 +65,9 @@ public:
     /// Under most circumstances, AST has to construct llvm::Range with it by itself.
     size_t pos = 0;
     /// The position of last token. If the token takes more than one character, this points to the last one.
-    size_t last_token_pos;
-
+    size_t last_token_pos = 0;
+    /// Source Manager is responsible for printing compiler errors and warnings.
+    /// It can also record the corresponding range of AST in the source file.
     llvm::SourceMgr source_mgr;
 
     explicit Lex(const std::string& file) {
@@ -79,6 +82,7 @@ public:
     int get_token();
     [[nodiscard]] llvm::SMRange quick_build_range(size_t begin, size_t end) const;
     [[nodiscard]] llvm::SMLoc quick_build_loc(size_t pos) const;
+    std::string to_lower_string(const std::string& str);
 
 private:
     const llvm::MemoryBuffer* file;

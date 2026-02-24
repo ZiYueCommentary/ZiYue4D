@@ -312,8 +312,8 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_exte
                                      "expecting function name", lex->range);
         throw std::exception();
     }
-    std::string name = std::move(is_extern ? lex->case_identifier : lex->identifier);
-    std::string non_case_name = is_extern ? std::move(lex->identifier) : name;
+    std::string name = std::move(lex->case_identifier);
+    std::string non_case_name = std::move(lex->identifier);
     this->token = lex->get_token();
     SymbolType return_value_type = is_extern ? SYMBOL_TYPE_VOID : SYMBOL_TYPE_INT;
     if (token == TOKEN_TYPE_INT || token == TOKEN_TYPE_FLOAT ||
@@ -353,7 +353,7 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_exte
         } else {
             mandatory_args++;
         }
-        function->symbol_table.insert({arg_name, type});
+        function->symbol_table.emplace(arg_name, type);
         function->arguments.push_back(
             std::make_unique<FunctionArgument>(std::move(arg_name), type, std::move(default_value)));
     } while (token == ',');
@@ -374,7 +374,7 @@ std::unique_ptr<FunctionSignatureAST> AST::parse_function_signature(bool is_exte
     }
 
     // looking for duplicate signatures...
-    auto [first, second] = function_table.equal_range(function->name);
+    auto [first, second] = function_table.equal_range(non_case_name);
     for (auto& it = first; it != second; ++it) {
         const size_t define_mandatory_args = std::ranges::count_if(it->second->signature->arguments,
                                                                    [](const std::unique_ptr<FunctionArgument>& arg) {
@@ -408,7 +408,7 @@ void AST::parse_function_definition() {
         std::unique_ptr<ExprAST> lhs = std::move(parse_primary_expression());
         function->body.push_back(std::move(parse_expression(std::move(lhs))));
     } while (true);
-    function_table.emplace(function->signature->name, std::move(function));
+    function_table.emplace(lex->to_lower_string(function->signature->name), std::move(function));
     scoped_symbol_table_layer.pop_back();
 }
 
