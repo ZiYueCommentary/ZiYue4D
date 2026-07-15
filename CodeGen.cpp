@@ -152,6 +152,7 @@ bool CodeGen::generate() {
         semantic->scoped_symbol_types.emplace_back();
         lifecycles.push_back({true, {}});
         builder->SetInsertPoint(block);
+        semantic->scope_function = &func_def->signature;
         build_scoped_symbol_table(func_def->signature->symbol_table);
 
         for (int i = 0; i < func_def->signature->arguments.size(); ++i) {
@@ -159,7 +160,6 @@ bool CodeGen::generate() {
             function->getArg(i)->setName(name);
             scoped_symbol_table.back().insert_or_assign(name, function->getArg(i));
         }
-        semantic->scope_function = &func_def->signature;
 
         for (const auto& expr : func_def->body) {
             if (builder->GetInsertBlock()->getTerminator() != nullptr) {
@@ -587,9 +587,9 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
     }
 
     size_t mandatory_args = std::ranges::count_if(signature->arguments,
-                                               [](const std::unique_ptr<FunctionArgument>& arg) {
-                                                   return arg->default_value == nullptr;
-                                               });
+                                                  [](const std::unique_ptr<FunctionArgument>& arg) {
+                                                      return arg->default_value == nullptr;
+                                                  });
     size_t optional_args = signature->arguments.size() - mandatory_args;
     char return_value_type = 'i';
     switch (signature->return_value_type) {
@@ -604,7 +604,7 @@ std::string CodeGen::unique_function_name(const std::unique_ptr<FunctionSignatur
     }
 
     std::string stylized = std::format("{}{}_{}_{}", return_value_type, signature->name, mandatory_args,
-                                                   optional_args);
+                                       optional_args);
     cache.insert({(void*) &signature, stylized});
 
     return cache.at((void*) &signature);
@@ -727,7 +727,13 @@ std::string CodeGen::literal_to_string(const ExprAST& expr) {
 }
 
 void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table) {
-    for (const auto& [name, type] : symbol_table) {
+    auto argument_names = (*semantic->scope_function)->arguments | std::views::transform([](const auto& arg) {
+        return arg->name;
+    }) | std::ranges::to<std::set>();
+    auto filtered_symbol_table = symbol_table | std::views::filter([&argument_names](const auto& pair) {
+        return !argument_names.contains(pair.first);
+    });
+    for (const auto& [name, type] : filtered_symbol_table) {
         if (semantic->ast->is_variable(name)) {
             semantic->scoped_symbol_types.back().emplace(name, type);
             switch (type) {

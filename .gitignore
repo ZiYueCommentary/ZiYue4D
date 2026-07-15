@@ -3,3 +3,7 @@
 /out
 .run
 /docs
+cmake-build-*/
+CMakeFiles
+Makefile
+compile_commands.json

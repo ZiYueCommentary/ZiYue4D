@@ -21,9 +21,9 @@ else
 	endif
 endif
 
-Function WoW()
+Function WoW(bar%)
 End Function
 
-wow()
+wow(10)
 
 return 200
