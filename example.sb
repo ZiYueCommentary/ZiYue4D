@@ -10,20 +10,19 @@ else
 
 	if true then
 	    Local d% = 114514
+	    ;print(GetCommandLineArg(__argv, 0))
 		print(Trim("       shuyodedaoli   \t"))
 		print HighPrecisionFloatString(1.0 + 2.0)
-		print bin(4)
-		print hex(sin(1.5))
-		return 0
-		local f$ = "1" + 4
+		print GetCommandLineArg(__argv, 1)
 	else
 		print (3)
 	endif
 endif
 
 Function WoW(bar%)
+Print(bar)
 End Function
 
 wow(10)
 
-return 200
+return 0

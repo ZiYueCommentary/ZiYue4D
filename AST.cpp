@@ -13,6 +13,10 @@ bool AST::parse() {
     scoped_symbol_table_layer.emplace_back(new SymbolTable{}, SYMBOL_TABLE_TYPE_GLOBAL); // global
     scoped_symbol_table_layer.front().symbol_table->insert({"main", SYMBOL_TYPE_FUNCTION});
     auto signature = std::make_unique<FunctionSignatureAST>("main", SYMBOL_TYPE_INT, llvm::SMRange());
+    signature->arguments.push_back({std::make_unique<FunctionArgument>("__argc", SYMBOL_TYPE_INT, nullptr)});
+    signature->arguments.push_back({std::make_unique<FunctionArgument>("__argv", SYMBOL_TYPE_POINTER, nullptr)});
+    signature->symbol_table.emplace("__argc", SYMBOL_TYPE_INT);
+    signature->symbol_table.emplace("__argv", SYMBOL_TYPE_POINTER);
     auto function = std::make_unique<FunctionAST>(std::move(signature), llvm::SMRange());
     scoped_symbol_table_layer.emplace_back(&function->signature->symbol_table); // main local
     function_table.emplace("main", std::move(function));

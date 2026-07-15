@@ -264,7 +264,5 @@ llvm::SMLoc Lex::quick_build_loc(size_t pos) const {
 }
 
 std::string Lex::to_lower_string(const std::string& str) {
-    std::string result{};
-    std::ranges::copy(str | std::views::transform([](const char c) { return tolower(c); }), std::back_inserter(result));
-    return result;
+    return str | std::views::transform([](const char c) { return tolower(c); }) | std::ranges::to<std::string>();
 }

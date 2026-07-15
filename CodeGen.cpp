@@ -627,17 +627,18 @@ void CodeGen::update_variable_value(const std::string& name, llvm::Value* value)
 }
 
 llvm::Value* CodeGen::find_variable_value(const std::string& name) {
+    const auto argument_names = (*semantic->scope_function)->arguments | std::views::transform([](const auto& arg) {
+        return arg->name;
+    }) | std::ranges::to<std::set>();
     for (const auto& table : std::ranges::reverse_view(scoped_symbol_table)) {
-        if (table.contains(name)) {
-            for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
-                if (type_table.contains(name)) {
-                    if ((type_table.at(name) == SYMBOL_TYPE_STRING && type_table != semantic->scoped_symbol_types.
-                         front()) || (semantic->ast->constant_table.contains(name) && type_table == semantic->
-                                      scoped_symbol_types.front()))
-                        return table.at(name);
-                    return builder->CreateLoad(symbol_type_to_type(type_table.at(name)), table.at(name));
-                }
-            }
+        if (!table.contains(name)) continue;
+        for (const auto& type_table : std::ranges::reverse_view(semantic->scoped_symbol_types)) {
+            if (!type_table.contains(name)) continue;
+            if (argument_names.contains(name) ||
+                (type_table.at(name) == SYMBOL_TYPE_STRING && type_table != semantic->scoped_symbol_types.front()) ||
+                (semantic->ast->constant_table.contains(name) && type_table == semantic->scoped_symbol_types.front()))
+                return table.at(name);
+            return builder->CreateLoad(symbol_type_to_type(type_table.at(name)), table.at(name));
         }
     }
     if (semantic->ast->constant_table.contains(name) && semantic->ast->is_variable(name) != SYMBOL_TYPE_STRING) {
@@ -727,15 +728,13 @@ std::string CodeGen::literal_to_string(const ExprAST& expr) {
 }
 
 void CodeGen::build_scoped_symbol_table(const SymbolTable& symbol_table) {
-    auto argument_names = (*semantic->scope_function)->arguments | std::views::transform([](const auto& arg) {
+    const auto argument_names = (*semantic->scope_function)->arguments | std::views::transform([](const auto& arg) {
         return arg->name;
     }) | std::ranges::to<std::set>();
-    auto filtered_symbol_table = symbol_table | std::views::filter([&argument_names](const auto& pair) {
-        return !argument_names.contains(pair.first);
-    });
-    for (const auto& [name, type] : filtered_symbol_table) {
+    for (const auto& [name, type] : symbol_table) {
         if (semantic->ast->is_variable(name)) {
             semantic->scoped_symbol_types.back().emplace(name, type);
+            if (argument_names.contains(name)) continue;
             switch (type) {
                 case SYMBOL_TYPE_INT:
                     scoped_symbol_table.back().insert({
